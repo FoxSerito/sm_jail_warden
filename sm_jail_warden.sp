@@ -7,6 +7,10 @@
 #include <foxserito_jail_warden>
 #include <sdkhooks>
 
+// --------------------
+//thanks for the basis code https://github.com/ecca
+// --------------------
+
 #define TEAM_CTS 3
 #define CS_TEAM_T 2
 #define PLUGIN_VERSION   "3.0.1"
