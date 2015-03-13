@@ -20,13 +20,21 @@ new Warden = -1;
 new Handle:g_cVar_mnotes = INVALID_HANDLE;
 new Handle:g_fward_onBecome = INVALID_HANDLE;
 new Handle:g_fward_onRemove = INVALID_HANDLE;
-
-new String:Title_Menu[] = "[Меню командира] [By FoxSerito] v2.0 beta:\n \n";
+new String:Title_Menu[] = "[Меню командира] [By FoxSerito] v2.2 :\n \n";
 
 new String:Sound_of_fight[PLATFORM_MAX_PATH] = "foxworldportal/jail/ob.mp3";
 
 new Handle:WardenModel;
 new String:WardenModelPath[PLATFORM_MAX_PATH] = "models/player/ct_gign.mdl";
+
+new Handle:GlowLight;
+new String:GlowLightPath[PLATFORM_MAX_PATH] = "sprites/animglow01.vmt";
+
+new Handle:GlowLightColor;
+new String:GlowLightColorPick[] = "0 255 0";
+
+new Handle:GlowLightSize;
+new String:GlowLightSizePick[] = "0.6";
 
 new floodcontrol = 0;
 new FriendlyfireCvar;
@@ -34,20 +42,16 @@ new GhostGameCvar;
 new FreeDayTrigger = 0;
 new FreeDayPlayer = -1;
 new CT_Vote_cmd;
-
 new String:m_ModelName_before_ward[PLATFORM_MAX_PATH];
-
-
-
 new Handle:h_Menu, Handle:h_Timer; 
 new kick_vots[MAXPLAYERS + 1], timer_sec, all_votes; 
 
 public Plugin:myinfo = {
-	name = "Jailbreak Warden",
-	author = "ecca",
-	description = "Jailbreak Warden script",
+	name = "Jail Warden (by FoxSerito)",
+	author = "FoxSerito",
+	description = "Jail Warden",
 	version = PLUGIN_VERSION,
-	url = "ffac.eu"
+	url = "vk.com/foxserito"
 };
 
 public OnPluginStart() 
@@ -82,13 +86,19 @@ public OnPluginStart()
 	g_fward_onBecome = CreateGlobalForward("warden_OnWardenCreated", ET_Ignore, Param_Cell);
 	g_fward_onRemove = CreateGlobalForward("warden_OnWardenRemoved", ET_Ignore, Param_Cell);
 
-	WardenModel = CreateConVar("warden_model", WardenModelPath, "Модель командира (def. models/player/ct_gign.mdl)");
+	WardenModel = CreateConVar("warden_model", WardenModelPath, "Модель командира");
+	GlowLight = CreateConVar("GlowLight_Texture", GlowLightPath, "Текстура направляющего света");
+	GlowLightColor = CreateConVar("GlowLight_Color", GlowLightColorPick, "Цвет направляющего света (R G B)");
+	GlowLightSize = CreateConVar("GlowLight_Size", GlowLightSizePick, "Размер направляющего света");
 }
 
 public OnConfigsExecuted()
 {
 	// Precache & download sounds
 	GetConVarString(WardenModel, WardenModelPath, sizeof(WardenModelPath));
+	GetConVarString(GlowLight, GlowLightPath, sizeof(GlowLightPath));
+	GetConVarString(GlowLightColor, GlowLightColorPick, sizeof(GlowLightColorPick));
+	GetConVarString(GlowLightSize, GlowLightSizePick, sizeof(GlowLightSizePick));
 }
 
 public OnMapStart() 
@@ -192,12 +202,14 @@ public round_start(Handle:event, const String:name[], bool:silent)
 	FreeDayTrigger = 0;
 	FreeDayPlayer = -1;
 	FriendlyfireCvar = 0;
-	GhostGameCvar = 0;
-	
+	GhostGameCvar = 0; 
+
+	//CloseHandle(maincmd); 
+	//CloseHandle(MenuPlus_handle); 
+	//CloseHandle(GameMenu_GH); 
 
 	ServerCommand("mp_friendlyfire 0");
 	ServerCommand("vip_friendlyfire 0");
-	ServerCommand("sm plugins load shop_trails");
 	ServerCommand("mp_flashlight 1");
 	ServerCommand("sm_hosties_lr 1"); //разрешить писать LR
 	ServerCommand("sm_hosties_rebel_color 1"); //// Включить окраску бунтующих Т
@@ -296,7 +308,7 @@ public Action:Timer_Func(Handle:timer_f)
 		new ct_count = 0;
 		for(new z = 1; z <= GetMaxClients(); z++)
 		{
-			if(IsClientInGame(z) && !IsFakeClient(z) && GetClientTeam(z) == TEAM_CTS)
+			if(IsClientInGame(z) && !IsFakeClient(z) && GetClientTeam(z) == TEAM_CTS && IsPlayerAlive(z))
 			{
 				last_cmd[z] = z;
 				ct_count++;
@@ -304,8 +316,11 @@ public Action:Timer_Func(Handle:timer_f)
 		}
 		new random_cmd = last_cmd[GetRandomInt(1,ct_count)];
 		CT_Vote_cmd = 0;
-		SetTheWarden(random_cmd);
-		ShowMyPanel(random_cmd);
+		if(IsClientInGame(random_cmd) && !IsFakeClient(random_cmd) && GetClientTeam(random_cmd) == TEAM_CTS && IsPlayerAlive(random_cmd)) //проверка проверка проверка :D
+		{
+			SetTheWarden(random_cmd);
+			ShowMyPanel(random_cmd);
+		}
 		PrintToChatAll("[КМД] Голосов нет, случайным командиром становится %N", random_cmd);
 		return Plugin_Stop; 
 	}
@@ -324,14 +339,14 @@ public Action:Timer_Func(Handle:timer_f)
 			target = i; 
 		} 
 	} 
-	if (target > 0 && IsClientInGame(target)) 
+	if (target > 0 && IsClientInGame(target) && !IsFakeClient(target) && GetClientTeam(target) == TEAM_CTS && IsPlayerAlive(target)) //проверка проверка проверка :D
 	{ 
 		CPrintToChatAll("<<<< {unique}Игрок {haunted}%N {unique}выбран командиром >>>>", target);
 		SetTheWarden(target);
 		ShowMyPanel(target);
 	} 
 	else 
-		PrintToChatAll("Игрок не найден"); 
+		PrintToChatAll("Игрок за КТ не найден, введите !w или !c чтобы взять командование"); 
 
 	return Plugin_Stop; 
 }
@@ -405,22 +420,25 @@ public Action:HookPlayerChat(client, const String:command[], args)
 
 public SetTheWarden(client)
 {
-	PrintToChatAll("[КМД] %t", "warden_new", client);
-	
-	if(GetConVarBool(g_cVar_mnotes))
+	if(IsClientInGame(client) && !IsFakeClient(client) && GetClientTeam(client) == TEAM_CTS && IsPlayerAlive(client))
 	{
-		PrintCenterTextAll("[КМД] %t", "warden_new", client);
-		PrintHintTextToAll("[КМД] %t", "warden_new", client);
-	}
-	Warden = client;
+		PrintToChatAll("[КМД] %t", "warden_new", client);
 	
-	GetEntPropString(client, Prop_Data, "m_ModelName", m_ModelName_before_ward, sizeof(m_ModelName_before_ward));
+		if(GetConVarBool(g_cVar_mnotes))
+		{
+			PrintCenterTextAll("[КМД] %t", "warden_new", client);
+			PrintHintTextToAll("[КМД] %t", "warden_new", client);
+		}
+		Warden = client;
+	
+		GetEntPropString(client, Prop_Data, "m_ModelName", m_ModelName_before_ward, sizeof(m_ModelName_before_ward));
 
-	SetEntityModel(client, WardenModelPath); //----------------------------------------------------------------------------------
-	SetEntityHealth(client, 130);
-	SetClientListeningFlags(client, VOICE_NORMAL);
+		SetEntityModel(client, WardenModelPath); //----------------------------------------------------------------------------------
+		SetEntityHealth(client, 130);
+		SetClientListeningFlags(client, VOICE_NORMAL);
 	
-	Forward_OnWardenCreation(client);
+		Forward_OnWardenCreation(client);
+	}
 }
 
 public RemoveTheWarden(client)
@@ -504,11 +522,12 @@ ShowMyPanel(client)
 	new Handle:maincmd = CreatePanel(); 
 	SetPanelTitle(maincmd, Title_Menu); 
 	DrawPanelItem(maincmd, "[◄|►] Открыть все двери");
+	DrawPanelItem(maincmd, "Направляющий свет");
 	DrawPanelItem(maincmd, "Дополнительно");
 	DrawPanelItem(maincmd, "Снять ФД/станд. цвет");	
 	DrawPanelItem(maincmd, "Дать мирный фридей (1чел)");
 	DrawPanelItem(maincmd, "Драка заключенных Вкл./Выкл.");
-	DrawPanelItem(maincmd, "Режим пряток (beta)");	
+	DrawPanelItem(maincmd, "Игра призрак (beta)");	
 	DrawPanelText(maincmd, "\n \n");
 	DrawPanelItem(maincmd, "[-] Покинуть пост");
 	DrawPanelItem(maincmd, "[X] Выйти из меню");
@@ -516,6 +535,7 @@ ShowMyPanel(client)
 	CloseHandle(maincmd);
 	ClientCommand(client, "playgamesound items/nvg_off.wav");
 }
+
 
 
 public Select_Panel(Handle:maincmd, MenuAction:action, client, option)  
@@ -543,22 +563,27 @@ public Select_Panel(Handle:maincmd, MenuAction:action, client, option)
 			}
 			else if(option == 2)
 			{
-				MenuPlus(client);
+				CreateGlowLight(client);
+				ShowMyPanel(client);
 			}
 			else if(option == 3)
+			{
+				MenuPlus(client);
+			}
+			else if(option == 4)
 			{
 				ColorChangeDef(client);
 				ShowMyPanel(client);
 			}
 			
-			else if(option == 4)
+			else if(option == 5)
 			{
 				// фридей
 				FreeDay(client);
 				ShowMyPanel(client);
 			}
 			
-			else if(option == 5)
+			else if(option == 6)
 			{
 				if (floodcontrol == 1)
 				{
@@ -573,11 +598,11 @@ public Select_Panel(Handle:maincmd, MenuAction:action, client, option)
 					ShowMyPanel(client);
 				}
 			}
-			else if(option == 6)
+			else if(option == 7)
 			{
 				ShowGhostGameMenu(client);
 			}
-			else if(option == 7)
+			else if(option == 8)
 			{
 				CPrintToChatAll("{springgreen}[КМД] ~ {white}Командир покинул пост, возьмите командование!");
 				SetEntityModel(client, m_ModelName_before_ward); //возвращаем модельку которая была раньше
@@ -608,6 +633,7 @@ MenuPlus(client)
 	CloseHandle(MenuPlus_handle);
 	ClientCommand(client, "playgamesound items/nvg_off.wav");
 }
+
 
 public Select_Panel_plus(Handle:MenuPlus_handle, MenuAction:action, client, option) 
 { 
@@ -765,7 +791,8 @@ ShowGhostGameMenu(client)
 	DrawPanelText(GameMenu_GH, "Игра Призрак ");	
 	DrawPanelText(GameMenu_GH, "[By FoxSerito]");
 	DrawPanelText(GameMenu_GH, "\n \n");
-	DrawPanelItem(GameMenu_GH, "Известные ошибки (баги)");	
+	DrawPanelItem(GameMenu_GH, "Известные ошибки (баги)");
+	DrawPanelItem(GameMenu_GH, "Правила");	
 	SendPanelToClient(GameMenu_GH, client, Select_Panel_PM, 0); 
 	CloseHandle(GameMenu_GH);
 } 
@@ -819,6 +846,13 @@ public Select_Panel_PM(Handle:GameMenu_GH, MenuAction:action, client, option)
 			PrintToChat(client," ");
 			ShowGhostGameMenu(client);
 		}
+		if(option == 4)
+		{
+			CPrintToChat(client,"{white}[КМД] ~ {greenyellow}КТ становятся невидимыми и должны убить Т имея только нож и повышенную гравитацию");
+			CPrintToChat(client,"{white}[КМД] ~ {greenyellow}Т могут брать любое оружие");
+			CPrintToChat(client,"{white}[КМД] ~ {greenyellow}Т не имеют права сидеть в узких тунелях и нычках где мало места и есть только один вход");
+			ShowGhostGameMenu(client);
+		}
 		else if (action == MenuAction_End)
 		{
 			CloseHandle(GameMenu_GH);
@@ -834,7 +868,6 @@ public Select_Panel_PM(Handle:GameMenu_GH, MenuAction:action, client, option)
 
 GhostGameStart()
 {
-	ServerCommand("sm plugins unload shop_trails");
 	ServerCommand("mp_flashlight 0"); //неробит
 	ServerCommand("sm_hosties_lr 0"); //зпретить писать LR
 	ServerCommand("sm_hosties_rebel_color 0"); // Выключить окраску бунтующих Т
@@ -932,7 +965,6 @@ public Action:OnWeaponEquip(client, weapon)
 
 GhostGameStop()
 {
-	ServerCommand("sm plugins load shop_trails");
 	ServerCommand("mp_flashlight 1");
 	ServerCommand("sm_hosties_lr 1");  //разрешить писать LR
 	ServerCommand("sm_hosties_rebel_color 1"); //// Включить окраску бунтующих Т
@@ -1013,6 +1045,54 @@ FreeDay(client)
 		}
 	}
 }
+
+//-------------------------------------------------
+// НАПРАВЛЯЮЩИЙ СВЕТ
+//-------------------------------------------------
+
+CreateGlowLight(client)
+{ 
+	decl Float:aim_Position[3]; 
+	GetLookPosition_f(client, aim_Position);
+	new weapon_ent = CreateEntityByName("env_sprite"); 
+	if (weapon_ent < 1) 
+	{ 
+		LogError("Ошибка при создании env_sprite"); 
+		return; 
+	}
+
+	DispatchKeyValueVector(weapon_ent, "origin", aim_Position); 
+	DispatchKeyValue(weapon_ent,"model",GlowLightPath); 
+	DispatchKeyValue(weapon_ent,"rendermode","9"); 
+	DispatchKeyValue(weapon_ent,"spawnflags","1"); 
+	DispatchKeyValue(weapon_ent,"rendercolor", GlowLightColorPick);
+	DispatchKeyValue(weapon_ent, "scale", GlowLightSizePick); 
+	
+	DispatchKeyValue(weapon_ent, "OnUser1", "!self,Kill,0,5,-1"); // 5 = через сколько сек удалять
+	DispatchSpawn(weapon_ent); 
+	AcceptEntityInput(weapon_ent, "FireUser1");
+}
+
+GetLookPosition_f(client, Float:aim_Position[3]) 
+{ 
+     decl Float:EyePosition[3], Float:EyeAngles[3], Handle:h_trace; 
+     GetClientEyePosition(client, EyePosition); 
+     GetClientEyeAngles(client, EyeAngles); 
+     h_trace = TR_TraceRayFilterEx(EyePosition, EyeAngles, MASK_SOLID, RayType_Infinite, GetLookPos_Filter_F, client); 
+     TR_GetEndPosition(aim_Position, h_trace); 
+     CloseHandle(h_trace); 
+} 
+
+public bool:GetLookPos_Filter_F(ent, mask, any:client) 
+{ 
+      return client != ent; 
+}
+//-------------------------------------------------
+// НАПРАВЛЯЮЩИЙ СВЕТ КОНЕЦ
+//-------------------------------------------------
+
+
+
 //-------------------------------------------------
 //    Code from Open All Doors plugin by SemJef
 //-------------------------------------------------
