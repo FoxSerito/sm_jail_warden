@@ -9,6 +9,7 @@
 
 // --------------------
 //thanks for the basis code https://github.com/ecca
+//спасибо за базовый код https://github.com/ecca
 // --------------------
 
 #define TEAM_CTS 3
@@ -20,15 +21,23 @@ new Handle:g_cVar_mnotes = INVALID_HANDLE;
 new Handle:g_fward_onBecome = INVALID_HANDLE;
 new Handle:g_fward_onRemove = INVALID_HANDLE;
 
-
 new String:Title_Menu[] = "[Меню командира] [By FoxSerito] v2.0 beta:\n \n";
 
-new String:Sound_of_fight[] = "foxworldportal/jail/ob.mp3";
+new String:Sound_of_fight[PLATFORM_MAX_PATH] = "foxworldportal/jail/ob.mp3";
+
+new Handle:WardenModel;
+new String:WardenModelPath[PLATFORM_MAX_PATH] = "models/player/ct_gign.mdl";
+
 new floodcontrol = 0;
 new FriendlyfireCvar;
 new GhostGameCvar;
 new FreeDayTrigger = 0;
 new FreeDayPlayer = -1;
+new CT_Vote_cmd;
+
+new String:m_ModelName_before_ward[PLATFORM_MAX_PATH];
+
+
 
 new Handle:h_Menu, Handle:h_Timer; 
 new kick_vots[MAXPLAYERS + 1], timer_sec, all_votes; 
@@ -43,6 +52,7 @@ public Plugin:myinfo = {
 
 public OnPluginStart() 
 {
+	AutoExecConfig();
 	// Initialize our phrases
 	LoadTranslations("warden.phrases");
 	
@@ -71,6 +81,14 @@ public OnPluginStart()
 	
 	g_fward_onBecome = CreateGlobalForward("warden_OnWardenCreated", ET_Ignore, Param_Cell);
 	g_fward_onRemove = CreateGlobalForward("warden_OnWardenRemoved", ET_Ignore, Param_Cell);
+
+	WardenModel = CreateConVar("warden_model", WardenModelPath, "Модель командира (def. models/player/ct_gign.mdl)");
+}
+
+public OnConfigsExecuted()
+{
+	// Precache & download sounds
+	GetConVarString(WardenModel, WardenModelPath, sizeof(WardenModelPath));
 }
 
 public OnMapStart() 
@@ -78,8 +96,7 @@ public OnMapStart()
 	PrecacheSound("items/nvg_off.wav", true);
 	PrecacheSound("items/gift_drop.wav", true);
 	PrecacheSound("foxworldportal/jail/ob.mp3", true);
-	PrecacheModel("models/player/vad36mk9/stryker.mdl");
-	PrecacheModel("models/player/vad36pvk/cop.mdl");
+	PrecacheModel(WardenModelPath);
 }
 
 
@@ -115,7 +132,7 @@ public Action:openmenu(client, args)
 	}
 	else // The warden already exist so there is no point setting a new one
 	{
-		PrintToChat(client, "Вы не КМД");
+		BecomeWarden(client, args);
 	}
 }
 
@@ -126,23 +143,25 @@ public Action:BecomeWarden(client, args)
 	{
 		if (GetClientTeam(client) == 3) // The requested player is on the Counter-Terrorist side
 		{
-			if (IsPlayerAlive(client)) // A dead warden would be worthless >_<
+			if (IsPlayerAlive(client) && CT_Vote_cmd == 0) // A dead warden would be worthless >_<
 			{
 				SetTheWarden(client);
+				ShowMyPanel(client);
 			}
 			else // Grr he is not alive -.-
 			{
-				PrintToChat(client, "Warden ~ %t", "warden_playerdead");
+				//PrintToChat(client, "[КМД] %t", "warden_playerdead");
+				PrintToChat(client, "[КМД] Вы неможете сейчас стать командиром!");
 			}
 		}
 		else // Would be wierd if an terrorist would run the prison wouldn't it :p
 		{
-			PrintToChat(client, "Warden ~ %t", "warden_ctsonly");
+			PrintToChat(client, "[КМД] %t", "warden_ctsonly");
 		}
 	}
 	else // The warden already exist so there is no point setting a new one
 	{
-		PrintToChat(client, "Warden ~ %t", "warden_exist", Warden);
+		PrintToChat(client, "[КМД] %t", "warden_exist", Warden);
 	}
 }
 
@@ -150,18 +169,18 @@ public Action:ExitWarden(client, args)
 {
 	if(client == Warden) // The client is actually the current warden so lets proceed
 	{
-		PrintToChatAll("Warden ~ %t", "warden_retire", client);
+		PrintToChatAll("[КМД] %t", "warden_retire", client);
 		if(GetConVarBool(g_cVar_mnotes))
 		{
-			PrintCenterTextAll("Warden ~ %t", "warden_retire", client);
-			PrintHintTextToAll("Warden ~ %t", "warden_retire", client);
+			PrintCenterTextAll("[КМД] %t", "warden_retire", client);
+			PrintHintTextToAll("[КМД] %t", "warden_retire", client);
 		}
 		Warden = -1; // Open for a new warden
 		SetEntityRenderColor(client, 255, 255, 255, 255); // Lets remove the awesome color
 	}
 	else // Fake dude!
 	{
-		PrintToChat(client, "Warden ~ %t", "warden_notwarden");
+		PrintToChat(client, "[КМД] %t", "warden_notwarden");
 	}
 }
 
@@ -175,6 +194,7 @@ public round_start(Handle:event, const String:name[], bool:silent)
 	FriendlyfireCvar = 0;
 	GhostGameCvar = 0;
 	
+
 	ServerCommand("mp_friendlyfire 0");
 	ServerCommand("vip_friendlyfire 0");
 	ServerCommand("sm plugins load shop_trails");
@@ -201,7 +221,6 @@ public round_start(Handle:event, const String:name[], bool:silent)
 	new players = 0; 
 	for (new i = 1; i <= MaxClients; i++) 
 	{ 
-		// очищаем кол-во голосов за кик игрока (i = его индекс) 
 		kick_vots[i] = 0; 
 
 		if (IsClientInGame(i) && GetClientTeam(i) == TEAM_CTS && GetClientName(i, StR_Name, MAX_NAME_LENGTH)) 
@@ -223,6 +242,7 @@ public round_start(Handle:event, const String:name[], bool:silent)
 		} 
 		all_votes = 0;  // сколько всего было голосов 
 		timer_sec = 15; // время голосования в сек. 
+		CT_Vote_cmd = 1; // переменная для обозначения что голосвание еще идет
 		h_Timer = CreateTimer(1.0, Timer_Func, _, TIMER_REPEAT); 
 	} 
 	else 
@@ -272,7 +292,26 @@ public Action:Timer_Func(Handle:timer_f)
 	PrintHintTextToAll("Голосование завершено (%d голосов)", all_votes); 
 	if (all_votes < 1)
 	{
+		new last_cmd[65];
+		new ct_count = 0;
+		for(new z = 1; z <= GetMaxClients(); z++)
+		{
+			if(IsClientInGame(z) && !IsFakeClient(z) && GetClientTeam(z) == TEAM_CTS)
+			{
+				last_cmd[z] = z;
+				ct_count++;
+			}
+		}
+		new random_cmd = last_cmd[GetRandomInt(1,ct_count)];
+		CT_Vote_cmd = 0;
+		SetTheWarden(random_cmd);
+		ShowMyPanel(random_cmd);
+		PrintToChatAll("[КМД] Голосов нет, случайным командиром становится %N", random_cmd);
 		return Plugin_Stop; 
+	}
+	else
+	{
+		CT_Vote_cmd = 0;
 	}
 
 	// Находим игрока, за которого больше всего проголосовали 
@@ -303,11 +342,11 @@ public Action:playerDeath(Handle:event, const String:name[], bool:dontBroadcast)
 	
 	if(client == Warden) // Aww damn , he is the warden
 	{
-		PrintToChatAll("Warden ~ %t", "warden_dead", client);
+		PrintToChatAll("[КМД] %t", "warden_dead", client);
 		if(GetConVarBool(g_cVar_mnotes))
 		{
-			PrintCenterTextAll("Warden ~ %t", "warden_dead", client);
-			PrintHintTextToAll("Warden ~ %t", "warden_dead", client);
+			PrintCenterTextAll("[КМД] %t", "warden_dead", client);
+			PrintHintTextToAll("[КМД] %t", "warden_dead", client);
 		}
 		SetEntityRenderColor(client, 255, 255, 255, 255); // Lets give him the standard color back
 		Warden = -1; // Lets open for a new warden
@@ -318,11 +357,11 @@ public OnClientDisconnect(client)
 {
 	if(client == Warden) // The warden disconnected, action!
 	{
-		PrintToChatAll("Warden ~ %t", "warden_disconnected");
+		PrintToChatAll("[КМД] %t", "warden_disconnected");
 		if(GetConVarBool(g_cVar_mnotes))
 		{
-			PrintCenterTextAll("Warden ~ %t", "warden_disconnected", client);
-			PrintHintTextToAll("Warden ~ %t", "warden_disconnected", client);
+			PrintCenterTextAll("[КМД] %t", "warden_disconnected", client);
+			PrintHintTextToAll("[КМД] %t", "warden_disconnected", client);
 		}
 		Warden = -1; // Lets open for a new warden
 	}
@@ -336,7 +375,7 @@ public Action:RemoveWarden(client, args)
 	}
 	else
 	{
-		PrintToChatAll("Warden ~ %t", "warden_noexist");
+		PrintToChatAll("[КМД] %t", "warden_noexist");
 	}
 
 	return Plugin_Handled; // Prevent sourcemod from typing "unknown command" in console
@@ -366,15 +405,18 @@ public Action:HookPlayerChat(client, const String:command[], args)
 
 public SetTheWarden(client)
 {
-	PrintToChatAll("Warden ~ %t", "warden_new", client);
+	PrintToChatAll("[КМД] %t", "warden_new", client);
 	
 	if(GetConVarBool(g_cVar_mnotes))
 	{
-		PrintCenterTextAll("Warden ~ %t", "warden_new", client);
-		PrintHintTextToAll("Warden ~ %t", "warden_new", client);
+		PrintCenterTextAll("[КМД] %t", "warden_new", client);
+		PrintHintTextToAll("[КМД] %t", "warden_new", client);
 	}
 	Warden = client;
-	SetEntityModel(client, "models/player/vad36mk9/stryker.mdl");
+	
+	GetEntPropString(client, Prop_Data, "m_ModelName", m_ModelName_before_ward, sizeof(m_ModelName_before_ward));
+
+	SetEntityModel(client, WardenModelPath); //----------------------------------------------------------------------------------
 	SetEntityHealth(client, 130);
 	SetClientListeningFlags(client, VOICE_NORMAL);
 	
@@ -383,13 +425,14 @@ public SetTheWarden(client)
 
 public RemoveTheWarden(client)
 {
-	PrintToChatAll("Warden ~ %t", "warden_removed", client, Warden);
+	PrintToChatAll("[КМД] %t", "warden_removed", client, Warden);
 	if(GetConVarBool(g_cVar_mnotes))
 	{
-		PrintCenterTextAll("Warden ~ %t", "warden_removed", client);
-		PrintHintTextToAll("Warden ~ %t", "warden_removed", client);
+		PrintCenterTextAll("[КМД] %t", "warden_removed", client);
+		PrintHintTextToAll("[КМД] %t", "warden_removed", client);
 	}
 	SetEntityRenderColor(Warden, 255, 255, 255, 255);
+	SetEntityModel(client, m_ModelName_before_ward); //возвращаем модельку которая была раньше
 	Warden = -1;
 	
 	Forward_OnWardenRemoved(client);
@@ -460,16 +503,15 @@ ShowMyPanel(client)
 { 
 	new Handle:maincmd = CreatePanel(); 
 	SetPanelTitle(maincmd, Title_Menu); 
-	DrawPanelItem(maincmd, "[◄|►] Открыть все двери");		//1
-	DrawPanelItem(maincmd, "Дополнительно"); 					//2
-	DrawPanelItem(maincmd, "Снять ФД/станд. цвет");			//3	
-	DrawPanelItem(maincmd, "Дать мирный фридей (1чел)");		//4
-	DrawPanelItem(maincmd, "Драка заключенных Вкл./Выкл.");	//5
-	DrawPanelItem(maincmd, "Режим пряток (beta)");			//7
-	DrawPanelText(maincmd, "130hp+Скин(пасив)");				//--
-	DrawPanelText(maincmd, "\n \n");							//--
-	DrawPanelItem(maincmd, "[-] Покинуть пост");				//8
-	DrawPanelItem(maincmd, "[X] Выйти из меню");				//9
+	DrawPanelItem(maincmd, "[◄|►] Открыть все двери");
+	DrawPanelItem(maincmd, "Дополнительно");
+	DrawPanelItem(maincmd, "Снять ФД/станд. цвет");	
+	DrawPanelItem(maincmd, "Дать мирный фридей (1чел)");
+	DrawPanelItem(maincmd, "Драка заключенных Вкл./Выкл.");
+	DrawPanelItem(maincmd, "Режим пряток (beta)");	
+	DrawPanelText(maincmd, "\n \n");
+	DrawPanelItem(maincmd, "[-] Покинуть пост");
+	DrawPanelItem(maincmd, "[X] Выйти из меню");
 	SendPanelToClient(maincmd, client, Select_Panel, 0);
 	CloseHandle(maincmd);
 	ClientCommand(client, "playgamesound items/nvg_off.wav");
@@ -538,7 +580,8 @@ public Select_Panel(Handle:maincmd, MenuAction:action, client, option)
 			else if(option == 7)
 			{
 				CPrintToChatAll("{springgreen}[КМД] ~ {white}Командир покинул пост, возьмите командование!");
-				warden_remove(client);
+				SetEntityModel(client, m_ModelName_before_ward); //возвращаем модельку которая была раньше
+				Warden = -1;
 			}
 			else if (action == MenuAction_End)
 			{
