@@ -12,15 +12,13 @@
 //спасибо за базовый код https://github.com/ecca
 // --------------------
 
-#define TEAM_CTS 3
-#define CS_TEAM_T 2
 #define PLUGIN_VERSION   "3.0.1"
 
 new Warden = -1;
 new Handle:g_cVar_mnotes = INVALID_HANDLE;
 new Handle:g_fward_onBecome = INVALID_HANDLE;
 new Handle:g_fward_onRemove = INVALID_HANDLE;
-new String:Title_Menu[] = "[Меню командира] [By FoxSerito] v2.2 :\n \n";
+new String:Title_Menu[] = "[Меню командира] :\n \n";
 
 new String:Sound_of_fight[PLATFORM_MAX_PATH] = "foxworldportal/jail/ob.mp3";
 
@@ -235,7 +233,7 @@ public round_start(Handle:event, const String:name[], bool:silent)
 	{ 
 		kick_vots[i] = 0; 
 
-		if (IsClientInGame(i) && GetClientTeam(i) == TEAM_CTS && GetClientName(i, StR_Name, MAX_NAME_LENGTH)) 
+		if (IsClientInGame(i) && GetClientTeam(i) == CS_TEAM_CT && GetClientName(i, StR_Name, MAX_NAME_LENGTH)) 
 		{ 
 			// получаем userid игрока и делаем его строкой, чтобы добавить в меню 
 			IntToString(GetClientUserId(i), StR_Id, sizeof(StR_Id)); 
@@ -308,7 +306,7 @@ public Action:Timer_Func(Handle:timer_f)
 		new ct_count = 0;
 		for(new z = 1; z <= GetMaxClients(); z++)
 		{
-			if(IsClientInGame(z) && !IsFakeClient(z) && GetClientTeam(z) == TEAM_CTS && IsPlayerAlive(z))
+			if(IsClientInGame(z) && !IsFakeClient(z) && GetClientTeam(z) == CS_TEAM_CT && IsPlayerAlive(z))
 			{
 				last_cmd[z] = z;
 				ct_count++;
@@ -316,7 +314,7 @@ public Action:Timer_Func(Handle:timer_f)
 		}
 		new random_cmd = last_cmd[GetRandomInt(1,ct_count)];
 		CT_Vote_cmd = 0;
-		if(IsClientInGame(random_cmd) && !IsFakeClient(random_cmd) && GetClientTeam(random_cmd) == TEAM_CTS && IsPlayerAlive(random_cmd)) //проверка проверка проверка :D
+		if(IsClientInGame(random_cmd) && !IsFakeClient(random_cmd) && GetClientTeam(random_cmd) == CS_TEAM_CT && IsPlayerAlive(random_cmd)) //проверка проверка проверка :D
 		{
 			SetTheWarden(random_cmd);
 			ShowMyPanel(random_cmd);
@@ -339,7 +337,7 @@ public Action:Timer_Func(Handle:timer_f)
 			target = i; 
 		} 
 	} 
-	if (target > 0 && IsClientInGame(target) && !IsFakeClient(target) && GetClientTeam(target) == TEAM_CTS && IsPlayerAlive(target)) //проверка проверка проверка :D
+	if (target > 0 && IsClientInGame(target) && !IsFakeClient(target) && GetClientTeam(target) == CS_TEAM_CT && IsPlayerAlive(target)) //проверка проверка проверка :D
 	{ 
 		CPrintToChatAll("<<<< {unique}Игрок {haunted}%N {unique}выбран командиром >>>>", target);
 		SetTheWarden(target);
@@ -408,7 +406,7 @@ public Action:HookPlayerChat(client, const String:command[], args)
 			return Plugin_Handled;
 		}
 		
-		if(IsClientInGame(client) && IsPlayerAlive(client) && GetClientTeam(client) == 3) // Typing warden is alive and his team is Counter-Terrorist
+		if(IsClientInGame(client) && IsPlayerAlive(client) && GetClientTeam(client) == CS_TEAM_CT) // Typing warden is alive and his team is Counter-Terrorist
 		{
 			CPrintToChatAll("{springgreen}[Командир] {blue}%N: {white}%s", client, szText);
 			return Plugin_Handled;
@@ -420,7 +418,7 @@ public Action:HookPlayerChat(client, const String:command[], args)
 
 public SetTheWarden(client)
 {
-	if(IsClientInGame(client) && !IsFakeClient(client) && GetClientTeam(client) == TEAM_CTS && IsPlayerAlive(client))
+	if(IsClientInGame(client) && !IsFakeClient(client) && GetClientTeam(client) == CS_TEAM_CT && IsPlayerAlive(client))
 	{
 		PrintToChatAll("[КМД] %t", "warden_new", client);
 	
@@ -544,71 +542,73 @@ public Select_Panel(Handle:maincmd, MenuAction:action, client, option)
 	{ 
 		if(IsPlayerAlive(client) && warden_iswarden(client))
 		{
-			if(option == 1)
+			switch(option)
 			{
-				if (floodcontrol == 1)
+				case 1:
 				{
-					PrintToChat(client,"Не используйте меню так часто!");
+					if (floodcontrol == 1)
+					{
+						PrintToChat(client,"Не используйте меню так часто!");
+						ShowMyPanel(client);
+					}
+					else
+					{
+						floodcontrol = 1;
+						CPrintToChatAll("{springgreen}[КМД] ~ {white}Командир Открыл Джайлы и другие обьекты");
+						PrintToServer("Коммандирка ~ Открыты все двери");
+						OpenAllDoors();
+						ShowMyPanel(client);
+						CreateTimer(5.0, FLOOD_D_timer);
+					}
+				}
+				case 2:
+				{
+					CreateGlowLight(client);
 					ShowMyPanel(client);
 				}
-				else
+				case 3:
 				{
-					floodcontrol = 1;
-					CPrintToChatAll("{springgreen}[КМД] ~ {white}Командир Открыл Джайлы и другие обьекты");
-					PrintToServer("Коммандирка ~ Открыты все двери");
-					OpenAllDoors();
-					ShowMyPanel(client);
-					CreateTimer(5.0, FLOOD_D_timer);
-				}
-			}
-			else if(option == 2)
-			{
-				CreateGlowLight(client);
-				ShowMyPanel(client);
-			}
-			else if(option == 3)
-			{
-				MenuPlus(client);
-			}
-			else if(option == 4)
-			{
-				ColorChangeDef(client);
-				ShowMyPanel(client);
-			}
-			
-			else if(option == 5)
-			{
-				// фридей
-				FreeDay(client);
-				ShowMyPanel(client);
-			}
-			
-			else if(option == 6)
-			{
-				if (floodcontrol == 1)
-				{
-					PrintToChat(client,"Не используйте меню так часто!");
+					CreateGlowLight(client);
 					ShowMyPanel(client);
 				}
-				else
+				case 4:
 				{
-					floodcontrol = 1;
-					CreateTimer(5.0, FLOOD_D_timer);
-					friendlyfire();							// friendlyfire
+					ColorChangeDef(client);
 					ShowMyPanel(client);
 				}
+				case 5:
+				{
+					// фридей
+					FreeDay(client);
+					ShowMyPanel(client);
+				}
+				case 6:
+				{
+					if (floodcontrol == 1)
+					{
+						PrintToChat(client,"Не используйте меню так часто!");
+						ShowMyPanel(client);
+					}
+					else
+					{
+						floodcontrol = 1;
+						CreateTimer(5.0, FLOOD_D_timer);
+						friendlyfire();							// friendlyfire
+						ShowMyPanel(client);
+					}
+				}
+				case 7:
+				{
+					ShowGhostGameMenu(client);
+				}
+				case 8:
+				{
+					CPrintToChatAll("{springgreen}[КМД] ~ {white}Командир покинул пост, возьмите командование!");
+					SetEntityModel(client, m_ModelName_before_ward); //возвращаем модельку которая была раньше
+					Warden = -1;
+				}
 			}
-			else if(option == 7)
-			{
-				ShowGhostGameMenu(client);
-			}
-			else if(option == 8)
-			{
-				CPrintToChatAll("{springgreen}[КМД] ~ {white}Командир покинул пост, возьмите командование!");
-				SetEntityModel(client, m_ModelName_before_ward); //возвращаем модельку которая была раньше
-				Warden = -1;
-			}
-			else if (action == MenuAction_End)
+			if (action == MenuAction_End)
 			{
 				CloseHandle(maincmd);
 			}
@@ -639,41 +639,47 @@ public Select_Panel_plus(Handle:MenuPlus_handle, MenuAction:action, client, opti
 { 
 	if(IsPlayerAlive(client) && warden_iswarden(client))
 	{
-		if(option == 1)
+		switch(option)
 		{
-			ColorChangeBlue(client);
-			MenuPlus(client);
-		}
-		else if(option == 2)
-		{
-			ColorChangeGreen(client);
-			MenuPlus(client);
-		}
-		else if(option == 3)
-		{
-			if (floodcontrol == 1)
+			case 1:
 			{
-				PrintToChat(client,"Не используйте меню так часто!");
+				ColorChangeBlue(client);
 				MenuPlus(client);
 			}
-			else
+			case 2:
 			{
-				floodcontrol = 1;
-				CreateTimer(5.0, FLOOD_D_timer);
-				ServerCommand("sm_stoplr"); //остановить лр
+				ColorChangeGreen(client);
 				MenuPlus(client);
 			}
+			case 3:
+			{
+				if (floodcontrol == 1)
+				{
+					PrintToChat(client,"Не используйте меню так часто!");
+					MenuPlus(client);
+				}
+				else
+				{
+					floodcontrol = 1;
+					CreateTimer(5.0, FLOOD_D_timer);
+					ServerCommand("sm_stoplr"); //остановить лр
+					MenuPlus(client);
+				}
+			}
+			case 4: // пункт назад
+			{
+				ShowMyPanel(client);
+			}
 		}
-		else if(option == 4) // пункт назад
+		if (action == MenuAction_End)
 		{
-			ShowMyPanel(client);
+			CloseHandle(MenuPlus_handle);
 		}
 	}
 	else // The warden already exist so there is no point setting a new one
 	{
 		PrintToChat(client, "Вы не КМД");
 	}
-
 }
 
 public Action:FLOOD_D_timer(Handle:timer)
@@ -801,59 +807,62 @@ public Select_Panel_PM(Handle:GameMenu_GH, MenuAction:action, client, option)
 { 
 	if(IsPlayerAlive(client) && warden_iswarden(client))
 	{
-		if(option == 1)
+		switch(option)
 		{
-			if (floodcontrol == 1)
+			case 1:
 			{
-				PrintToChat(client,"Не используйте меню так часто!");
-				ShowGhostGameMenu(client);
-			}
-			else
-			{
-				if (floodcontrol == 9999)
+				if (floodcontrol == 1)
 				{
-					floodcontrol = 1;
-					if (GhostGameCvar == 0)
-					{
-						GhostGameStart(); //запускаем
-						
-						PrintToChat(client,"[КМД] ~ Запущена игра Призрак!");
-						PrintHintTextToAll("[КМД] ~ Запущена игра Призрак!");
-						ShowGhostGameMenu(client);
-						GhostGameCvar = 1;
-					}
-					else
-					{
-						GhostGameStop(); //останавливаем
-						
-						PrintToChat(client,"[КМД] ~ Игра Призрак остановлена!");
-						PrintHintTextToAll("[КМД] ~ Игра Призрак остановлена!");
-						ShowGhostGameMenu(client);
-						GhostGameCvar = 0;
-					}
-					CreateTimer(5.0, FLOOD_D_timer);
+					PrintToChat(client,"Не используйте меню так часто!");
+					ShowGhostGameMenu(client);
 				}
 				else
 				{
-					PrintToChat(client, "Игра в разработке...");
+					if (floodcontrol == 9999)
+					{
+						floodcontrol = 1;
+						if (GhostGameCvar == 0)
+						{
+							GhostGameStart(); //запускаем
+							
+							PrintToChat(client,"[КМД] ~ Запущена игра Призрак!");
+							PrintHintTextToAll("[КМД] ~ Запущена игра Призрак!");
+							ShowGhostGameMenu(client);
+							GhostGameCvar = 1;
+						}
+						else
+						{
+							GhostGameStop(); //останавливаем
+							
+							PrintToChat(client,"[КМД] ~ Игра Призрак остановлена!");
+							PrintHintTextToAll("[КМД] ~ Игра Призрак остановлена!");
+							ShowGhostGameMenu(client);
+							GhostGameCvar = 0;
+						}
+						CreateTimer(5.0, FLOOD_D_timer);
+					}
+					else
+					{
+						PrintToChat(client, "Игра в разработке...");
+					}
 				}
 			}
+			case 3:
+			{
+				PrintToChat(client," ");
+				CPrintToChat(client,"{white}[КМД] ~ {greenyellow}Баги: перед началом игры КТ должен выбросить гранату, иначе будет видно");
+				PrintToChat(client," ");
+				ShowGhostGameMenu(client);
+			}
+			case 4:
+			{
+				CPrintToChat(client,"{white}[КМД] ~ {greenyellow}КТ становятся невидимыми и должны убить Т имея только нож и повышенную гравитацию");
+				CPrintToChat(client,"{white}[КМД] ~ {greenyellow}Т могут брать любое оружие");
+				CPrintToChat(client,"{white}[КМД] ~ {greenyellow}Т не имеют права сидеть в узких тунелях и нычках где мало места и есть только один вход");
+				ShowGhostGameMenu(client);
+			}
 		}
-		if(option == 3)
-		{
-			PrintToChat(client," ");
-			CPrintToChat(client,"{white}[КМД] ~ {greenyellow}Баги: перед началом игры КТ должен выбросить гранату, иначе будет видно");
-			PrintToChat(client," ");
-			ShowGhostGameMenu(client);
-		}
-		if(option == 4)
-		{
-			CPrintToChat(client,"{white}[КМД] ~ {greenyellow}КТ становятся невидимыми и должны убить Т имея только нож и повышенную гравитацию");
-			CPrintToChat(client,"{white}[КМД] ~ {greenyellow}Т могут брать любое оружие");
-			CPrintToChat(client,"{white}[КМД] ~ {greenyellow}Т не имеют права сидеть в узких тунелях и нычках где мало места и есть только один вход");
-			ShowGhostGameMenu(client);
-		}
-		else if (action == MenuAction_End)
+		if (action == MenuAction_End)
 		{
 			CloseHandle(GameMenu_GH);
 		}
@@ -884,7 +893,7 @@ GhostGameStart()
 	{
 		if (IsClientInGame(i) && (!IsFakeClient(i)) && IsPlayerAlive(i))
 		{
-			if(GetClientTeam(i) == TEAM_CTS)
+			if(GetClientTeam(i) == CS_TEAM_CT)
 			{
 				StripAllWeapons(i);
 				GivePlayerItem(i, "weapon_knife");
@@ -925,7 +934,7 @@ public Action:Timer_FixGravity(Handle:timer)
 	{
 		if (IsClientInGame(i) && (!IsFakeClient(i)) && IsPlayerAlive(i))
 		{
-			if(GetClientTeam(i) == TEAM_CTS)
+			if(GetClientTeam(i) == CS_TEAM_CT)
 			{
 				SetEntityGravity(i, 0.2);
 			}
@@ -936,7 +945,7 @@ public Action:Timer_FixGravity(Handle:timer)
 
 public Action:OnWeaponCanUse(client, weapon)
 {
-    if( GetClientTeam(client) == TEAM_CTS && GhostGameCvar == 1)
+    if( GetClientTeam(client) == CS_TEAM_CT && GhostGameCvar == 1)
 	{
 		decl String:wepClassname[32];
 		GetEntityClassname(weapon, wepClassname, sizeof(wepClassname));
@@ -952,7 +961,7 @@ public Action:OnWeaponCanUse(client, weapon)
 
 public Action:OnWeaponEquip(client, weapon)
 {
-    if( GetClientTeam(client) == TEAM_CTS && GhostGameCvar == 1)
+    if( GetClientTeam(client) == CS_TEAM_CT && GhostGameCvar == 1)
 	{
 		return Plugin_Handled;
 	}
@@ -978,7 +987,7 @@ GhostGameStop()
 	{
 		if (IsClientInGame(i) && (!IsFakeClient(i)) && IsPlayerAlive(i))
 		{
-			if(GetClientTeam(i) == TEAM_CTS)
+			if(GetClientTeam(i) == CS_TEAM_CT)
 			{
 				StripAllWeapons(i);
 				GivePlayerItem(i, "weapon_knife");	
