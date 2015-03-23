@@ -6,13 +6,14 @@
 #include <morecolors>
 #include <foxserito_jail_warden>
 #include <sdkhooks>
+#include <lastrequest>
 
 // --------------------
 //thanks for the basis code https://github.com/ecca
 //спасибо за базовый код https://github.com/ecca
 // --------------------
 
-#define PLUGIN_VERSION   "3.0.1"
+#define PLUGIN_VERSION   "2.3.0"
 
 new Warden = -1;
 new Handle:g_cVar_mnotes = INVALID_HANDLE;
@@ -43,6 +44,7 @@ new CT_Vote_cmd;
 new String:m_ModelName_before_ward[PLATFORM_MAX_PATH];
 new Handle:h_Menu, Handle:h_Timer; 
 new kick_vots[MAXPLAYERS + 1], timer_sec, all_votes; 
+new SomeoneClientInLastRequestPeremen = 0;
 
 public Plugin:myinfo = {
 	name = "Jail Warden (by FoxSerito)",
@@ -134,48 +136,72 @@ public Action:GhostGameStartCommand(client, args)
 
 public Action:openmenu(client, args) 
 {
+
 	if(IsPlayerAlive(client) && warden_iswarden(client))
 	{
 		ShowMyPanel(client);
 	}
-	else // The warden already exist so there is no point setting a new one
+	else // если командир уже назначен просто открываем ему меню
 	{
 		BecomeWarden(client, args);
 	}
+	return Plugin_Handled;
 }
 
 
 public Action:BecomeWarden(client, args) 
 {
-	if (Warden == -1) // There is no warden , so lets proceed
+	SomeoneClientInLastRequestPeremen = 0;
+	SomeoneClientInLastRequest();
+	if (Warden == -1) // если нет кмд
 	{
-		if (GetClientTeam(client) == 3) // The requested player is on the Counter-Terrorist side
+		
+		if (GetClientTeam(client) == 3) // если игрок КТ
 		{
-			if (IsPlayerAlive(client) && CT_Vote_cmd == 0) // A dead warden would be worthless >_<
+			if (IsPlayerAlive(client) && CT_Vote_cmd == 0) // если игрок жив и голосование не идет
 			{
-				SetTheWarden(client);
-				ShowMyPanel(client);
+				SetTheWarden(client); //игрок становится КМД
+				ShowMyPanel(client); //и показываем ему сразу меню
 			}
-			else // Grr he is not alive -.-
+			else if(CT_Vote_cmd > 0) // если голосование еще идет
+			{
+				PrintToChat(client, "[КМД] Вы неможете сейчас стать командиром, идет голосование!");
+			}
+			else if(SomeoneClientInLastRequestPeremen == 1) //если у когонибудь ЛР
+			{
+				PrintToChat(client, "[КМД] Вы неможете сейчас стать командиром, идет ЛР!");
+			}
+			else // или другая причина
 			{
 				//PrintToChat(client, "[КМД] %t", "warden_playerdead");
 				PrintToChat(client, "[КМД] Вы неможете сейчас стать командиром!");
 			}
 		}
-		else // Would be wierd if an terrorist would run the prison wouldn't it :p
+		else // только КТ могут стать командиром
 		{
 			PrintToChat(client, "[КМД] %t", "warden_ctsonly");
 		}
 	}
-	else // The warden already exist so there is no point setting a new one
+	else // командир уже назначен
 	{
 		PrintToChat(client, "[КМД] %t", "warden_exist", Warden);
 	}
 }
 
+SomeoneClientInLastRequest()
+{
+	for (new z = 1; z <= MaxClients; z++) 
+	{ 
+		if (IsClientInGame(z) && !IsFakeClient(z) && IsClientInLastRequest(z))
+		{
+			SomeoneClientInLastRequestPeremen = 1; //есть ктонибудь участвующий в ЛР
+		} 
+	}
+}
+
 public Action:ExitWarden(client, args) 
 {
-	if(client == Warden) // The client is actually the current warden so lets proceed
+	if(client == Warden) // убеждаемся в игроке что он командир
 	{
 		PrintToChatAll("[КМД] %t", "warden_retire", client);
 		if(GetConVarBool(g_cVar_mnotes))
@@ -183,10 +209,11 @@ public Action:ExitWarden(client, args)
 			PrintCenterTextAll("[КМД] %t", "warden_retire", client);
 			PrintHintTextToAll("[КМД] %t", "warden_retire", client);
 		}
-		Warden = -1; // Open for a new warden
-		SetEntityRenderColor(client, 255, 255, 255, 255); // Lets remove the awesome color
+		CloseWardenMenu();
+		Warden = -1; // даем возможность другим стать командиром
+		//SetEntityRenderColor(client, 255, 255, 255, 255);
 	}
-	else // Fake dude!
+	else 
 	{
 		PrintToChat(client, "[КМД] %t", "warden_notwarden");
 	}
@@ -194,29 +221,28 @@ public Action:ExitWarden(client, args)
 
 public round_start(Handle:event, const String:name[], bool:silent) 
 { 
-	Warden = -1; // Lets remove the current warden if he exist
-	// Если вдруг начался новый раунд, но наш таймер + меню активны, останавливаем их. 
-	// Например, раунд быстро закончился, или был рестарт. 
+	Warden = -1; // в начале раунда открываем вакансию командира
+	
 	FreeDayTrigger = 0;
 	FreeDayPlayer = -1;
 	FriendlyfireCvar = 0;
 	GhostGameCvar = 0; 
 
-	//CloseHandle(maincmd); 
-	//CloseHandle(MenuPlus_handle); 
-	//CloseHandle(GameMenu_GH); 
-
 	ServerCommand("mp_friendlyfire 0");
 	ServerCommand("vip_friendlyfire 0");
-	ServerCommand("mp_flashlight 1");
-	ServerCommand("sm_hosties_lr 1"); //разрешить писать LR
-	ServerCommand("sm_hosties_rebel_color 1"); //// Включить окраску бунтующих Т
-	ServerCommand("sm_hosties_announce_rebel 1"); // Включить оповещение в чате когда Т считаются сбежавшами.
-	ServerCommand("mp_playerid 0"); //видны ники	
-	ServerCommand("sm_hosties_freekill_sound_mode 1"); //звук фрикила
-	ServerCommand("hgrsource_hook_enable 1"); //врубаем паутинку админам
-	ServerCommand("mp_forcecamera 0"); //наблюдать за другой командой
+	//--для игры призрак--
+	//ServerCommand("mp_flashlight 1");
+	//ServerCommand("sm_hosties_lr 1"); //разрешить писать LR
+	//ServerCommand("sm_hosties_rebel_color 1"); //// Включить окраску бунтующих Т
+	//ServerCommand("sm_hosties_announce_rebel 1"); // Включить оповещение в чате когда Т считаются сбежавшами.
+	//ServerCommand("mp_playerid 0"); //видны ники	
+	//ServerCommand("sm_hosties_freekill_sound_mode 1"); //звук фрикила
+	//ServerCommand("hgrsource_hook_enable 1"); //врубаем паутинку админам
+	//ServerCommand("mp_forcecamera 0"); //наблюдать за другой командой
+	//--для игры призрак--
 
+	// Если вдруг начался новый раунд, но наш таймер + меню активны, останавливаем их. 
+	// Например, раунд быстро закончился, или был рестарт. 
 	if (h_Timer != INVALID_HANDLE) 
 	{ 
 		KillTimer(h_Timer); 
@@ -228,22 +254,32 @@ public round_start(Handle:event, const String:name[], bool:silent)
 	SetMenuTitle(h_Menu, "Кто будет командовать?\n \n"); 
 	SetMenuExitButton(h_Menu, false); 
 	decl String:StR_Id[15], String:StR_Name[MAX_NAME_LENGTH]; 
-	new players = 0; 
-	for (new i = 1; i <= MaxClients; i++) 
+	new T_players = 0;
+	new CT_players = 0;
+	for (new p = 1; p <= MaxClients; p++) 
 	{ 
-		kick_vots[i] = 0; 
+		if (IsClientInGame(p) && !IsFakeClient(p) && GetClientTeam(p) == CS_TEAM_T) 
+		{ 
+			T_players++; //счетчик терраристов
+		} 
 
-		if (IsClientInGame(i) && GetClientTeam(i) == CS_TEAM_CT && GetClientName(i, StR_Name, MAX_NAME_LENGTH)) 
+		if (IsClientInGame(p) && !IsFakeClient(p) && GetClientTeam(p) == CS_TEAM_CT) 
+		{ 
+			CT_players++; //счетчик контер-терраристов
+		}
+
+		kick_vots[p] = 0;
+
+		if (IsClientInGame(p) && GetClientTeam(p) == CS_TEAM_CT && GetClientName(p, StR_Name, MAX_NAME_LENGTH)) 
 		{ 
 			// получаем userid игрока и делаем его строкой, чтобы добавить в меню 
-			IntToString(GetClientUserId(i), StR_Id, sizeof(StR_Id)); 
+			IntToString(GetClientUserId(p), StR_Id, sizeof(StR_Id)); 
 			AddMenuItem(h_Menu, StR_Id, StR_Name); 
-			players++; 
-		} 
+		}	
 	} 
 
-	// если игроков на сервере > 0 
-	if (players > 0) 
+	// если террористов на сервере > 2 (потомучто sm_hosties_lr_ts_max 2, чтобы не мешать писать ЛР)
+	if (T_players > 2 && CT_players > 0) 
 	{ 
 		// показываем игрокам созданное меню и запускаем таймер 
 		for (new i = 1; i <= MaxClients; i++) 
@@ -251,15 +287,17 @@ public round_start(Handle:event, const String:name[], bool:silent)
 			if (IsClientInGame(i) && GetClientTeam(i) == CS_TEAM_T && !IsFakeClient(i)) DisplayMenu(h_Menu, i, 10); 
 		} 
 		all_votes = 0;  // сколько всего было голосов 
-		timer_sec = 15; // время голосования в сек. 
+		timer_sec = 12; // время голосования в сек. 
 		CT_Vote_cmd = 1; // переменная для обозначения что голосвание еще идет
 		h_Timer = CreateTimer(1.0, Timer_Func, _, TIMER_REPEAT); 
 	} 
 	else 
-	{ 
-		// если нет игроков, удаляем созданное меню 
+	{
+		// если террористов меньше 2, удаляем созданное меню и разрешаем писать команды !w/!c
 		CloseHandle(h_Menu); 
-		h_Menu = INVALID_HANDLE; 
+		h_Menu = INVALID_HANDLE;
+		CPrintToChatAll("{greenyellow}Мало игроков для голосования, возьмите кмд командой !w или !c");  
+		CT_Vote_cmd = 0;
 	} 
 } 
 
@@ -287,7 +325,7 @@ public Action:Timer_Func(Handle:timer_f)
 { 
 	if (--timer_sec > 0) 
 	{ 
-		PrintHintTextToAll("До завершения голосования:\n< %d сек >", timer_sec); 
+		PrintHintTextToAll("До завершения голосования:\n \n▌ %d сек ▌", timer_sec); 
 		return Plugin_Continue; 
 	} 
 
@@ -299,7 +337,7 @@ public Action:Timer_Func(Handle:timer_f)
 		h_Menu = INVALID_HANDLE; 
 	} 
 
-	PrintHintTextToAll("Голосование завершено (%d голосов)", all_votes); 
+	PrintHintTextToAll("Голосование завершено\n \n♦ %d голосов ♦", all_votes); 
 	if (all_votes < 1)
 	{
 		new last_cmd[65];
@@ -319,8 +357,15 @@ public Action:Timer_Func(Handle:timer_f)
 			SetTheWarden(random_cmd);
 			ShowMyPanel(random_cmd);
 		}
+		else if(ct_count == 0)
+		{
+			PrintToChatAll("[КМД] Голосование провалилось :( Нету живых КТ");
+			CT_Vote_cmd = 0;
+			return Plugin_Stop;
+		}
+
 		PrintToChatAll("[КМД] Голосов нет, случайным командиром становится %N", random_cmd);
-		return Plugin_Stop; 
+		// 
 	}
 	else
 	{
@@ -344,16 +389,16 @@ public Action:Timer_Func(Handle:timer_f)
 		ShowMyPanel(target);
 	} 
 	else 
-		PrintToChatAll("Игрок за КТ не найден, введите !w или !c чтобы взять командование"); 
+		PrintToChatAll("Игрок за КТ не найден, введите !w или !c чтобы стать командиром."); 
 
 	return Plugin_Stop; 
 }
 
 public Action:playerDeath(Handle:event, const String:name[], bool:dontBroadcast) 
 {
-	new client = GetClientOfUserId(GetEventInt(event, "userid")); // Get the dead clients id
+	new client = GetClientOfUserId(GetEventInt(event, "userid")); 
 	
-	if(client == Warden) // Aww damn , he is the warden
+	if(client == Warden)
 	{
 		PrintToChatAll("[КМД] %t", "warden_dead", client);
 		if(GetConVarBool(g_cVar_mnotes))
@@ -361,14 +406,15 @@ public Action:playerDeath(Handle:event, const String:name[], bool:dontBroadcast)
 			PrintCenterTextAll("[КМД] %t", "warden_dead", client);
 			PrintHintTextToAll("[КМД] %t", "warden_dead", client);
 		}
-		SetEntityRenderColor(client, 255, 255, 255, 255); // Lets give him the standard color back
-		Warden = -1; // Lets open for a new warden
+		SetEntityRenderColor(client, 255, 255, 255, 255);
+		CloseWardenMenu();
+		Warden = -1;
 	}
 }
 
 public OnClientDisconnect(client)
 {
-	if(client == Warden) // The warden disconnected, action!
+	if(client == Warden)
 	{
 		PrintToChatAll("[КМД] %t", "warden_disconnected");
 		if(GetConVarBool(g_cVar_mnotes))
@@ -376,13 +422,14 @@ public OnClientDisconnect(client)
 			PrintCenterTextAll("[КМД] %t", "warden_disconnected", client);
 			PrintHintTextToAll("[КМД] %t", "warden_disconnected", client);
 		}
-		Warden = -1; // Lets open for a new warden
+		CloseWardenMenu();
+		Warden = -1;
 	}
 }
 
 public Action:RemoveWarden(client, args)
 {
-	if(Warden != -1) // Is there an warden at the moment ?
+	if(Warden != -1)
 	{
 		RemoveTheWarden(client);
 	}
@@ -391,22 +438,22 @@ public Action:RemoveWarden(client, args)
 		PrintToChatAll("[КМД] %t", "warden_noexist");
 	}
 
-	return Plugin_Handled; // Prevent sourcemod from typing "unknown command" in console
+	return Plugin_Handled;
 }
 
 public Action:HookPlayerChat(client, const String:command[], args)
 {
-	if(Warden == client && client != 0) // Check so the player typing is warden and also checking so the client isn't console!
+	if(Warden == client && client != 0) 
 	{
 		new String:szText[256];
 		GetCmdArg(1, szText, sizeof(szText));
 		
-		if(szText[0] == '/' || szText[0] == '@' || IsChatTrigger()) // Prevent unwanted text to be displayed.
+		if(szText[0] == '/' || szText[0] == '@' || IsChatTrigger())
 		{
 			return Plugin_Handled;
 		}
 		
-		if(IsClientInGame(client) && IsPlayerAlive(client) && GetClientTeam(client) == CS_TEAM_CT) // Typing warden is alive and his team is Counter-Terrorist
+		if(IsClientInGame(client) && IsPlayerAlive(client) && GetClientTeam(client) == CS_TEAM_CT)
 		{
 			CPrintToChatAll("{springgreen}[Командир] {blue}%N: {white}%s", client, szText);
 			return Plugin_Handled;
@@ -431,7 +478,7 @@ public SetTheWarden(client)
 	
 		GetEntPropString(client, Prop_Data, "m_ModelName", m_ModelName_before_ward, sizeof(m_ModelName_before_ward));
 
-		SetEntityModel(client, WardenModelPath); //----------------------------------------------------------------------------------
+		SetEntityModel(client, WardenModelPath);
 		SetEntityHealth(client, 130);
 		SetClientListeningFlags(client, VOICE_NORMAL);
 	
@@ -449,6 +496,7 @@ public RemoveTheWarden(client)
 	}
 	SetEntityRenderColor(Warden, 255, 255, 255, 255);
 	SetEntityModel(client, m_ModelName_before_ward); //возвращаем модельку которая была раньше
+	CloseWardenMenu();
 	Warden = -1;
 	
 	Forward_OnWardenRemoved(client);
@@ -568,8 +616,7 @@ public Select_Panel(Handle:maincmd, MenuAction:action, client, option)
 				}
 				case 3:
 				{
-					CreateGlowLight(client);
-					ShowMyPanel(client);
+					MenuPlus(client);
 				}
 				case 4:
 				{
@@ -1075,9 +1122,9 @@ CreateGlowLight(client)
 	DispatchKeyValue(weapon_ent,"rendermode","9"); 
 	DispatchKeyValue(weapon_ent,"spawnflags","1"); 
 	DispatchKeyValue(weapon_ent,"rendercolor", GlowLightColorPick);
-	DispatchKeyValue(weapon_ent, "scale", GlowLightSizePick); 
+	DispatchKeyValue(weapon_ent,"scale", GlowLightSizePick); 
 	
-	DispatchKeyValue(weapon_ent, "OnUser1", "!self,Kill,0,5,-1"); // 5 = через сколько сек удалять
+	DispatchKeyValue(weapon_ent, "OnUser1", "!self,Kill,0,15,-1"); // 15 = через сколько сек удалять
 	DispatchSpawn(weapon_ent); 
 	AcceptEntityInput(weapon_ent, "FireUser1");
 }
