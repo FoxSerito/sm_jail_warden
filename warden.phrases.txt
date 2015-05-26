@@ -1,0 +1,92 @@
+"Phrases"
+{
+	"warden_new"
+	{
+		"#format"	"{1:N}"
+		"en"		"{1} has become the warden of this prison."
+		"ru"		"{1} стал командиром."
+		"pt"		"{1} Agora, o diretor da prisão.."
+		"sv"		"{1} har blivit fängelsedirektör över detta fängelse."
+	}
+	
+	"warden_playerdead"
+	{
+		"#format"	""
+		"en"		"only alive players may become warden."
+		"ru"		"Только живые КТ могут стать командиром."
+		"pt"		"Apenas os jogadores podem viver o diretor.."
+		"sv"		"Endast levande spelare kan bli fängelsedirektör."
+	}
+	
+	"warden_ctsonly"
+	{
+		"#format"	""
+		"en"		"only Counter-Terrorists may become warden."
+		"ru"		"Только КТ может стать командиром."
+		"pt"		"Apenas o diretor pode ser AntiTerrorista."
+		"sv"		"Endast Anti-Terrorister kan bli fängelsedirektör."
+	}
+	
+	"warden_exist"
+	{
+		"#format"	"{1:N}"
+		"en"		"current warden is: {1}"
+		"ru"		"Сейчас командир - {1}"
+		"pt"		"Atual diretor: {1}"
+		"sv"		"nuvarande fängelsedirektör är: {1}"
+	}
+	
+	"warden_retire"
+	{
+		"#format"	"{1:N}"
+		"en"		"{1} has decided to retire. You may now choose a new one."
+		"ru"		"{1} не захотел быть Командиром. Возьмите командование на себя."
+		"pt"		"{1} o atual diretor, decidiu se aposentar. Agora começa a escolher um novo.."
+		"sv"		"{1} har bestämt sig för att avgå. Ni bör nu välja en ny."
+	}
+	
+	"warden_notwarden"
+	{
+		"#format"	""
+		"en"		"you are not the warden and therefore may not retire."
+		"ru"		"Вы не командир и, следовательно, не может уйти в отставку."
+		"pt"		"Você não é o diretor, e você não pode se aposentar.."
+		"sv"		"du är inte fängelsedirektören och kan därför inte avgå."
+	}
+	
+	"warden_dead"
+	{
+		"#format"	""
+		"en"		"the warden are now dead. You may now choose a new one."
+		"ru"		"Командир умер. Возьмите командования на себя."
+		"pt"		"O diretor está morto, agora começa a escolher um novo."
+		"sv"		"fängelsedirektören är död. Ni bör nu välja en ny."
+	}
+	
+	"warden_disconnected"
+	{
+		"#format"	""
+		"en"		"the warden has disconnected. You may now choose a new one."
+		"ru"		"Командир был отключен. Возьмите командование на себя."
+		"pt"		"O diretor deixou o jogo. Agora começa a escolher um novo."
+		"sv"		"fängelsedirektören har lämnat. Ni bör nu välja en ny."
+	}
+	
+	"warden_removed"
+	{
+		"#format"	"{1:N},{2:N}"
+		"en"		"Admin: {1} fired Warden: {2}"
+		"ru"		"Админ: {1} уволил командира {2}"
+		"pt"		"O Administrador do: {1} o diretor se aposentou cedo: {2}"
+		"sv"		"Admin: {1} avskedade Fängelsedirektören: {2}"
+	}
+	
+	"warden_noexist"
+	{
+		"#format"	""
+		"en"		"there was no warden to fire."
+		"ru"		"Командиров нет."
+		"pt"		"Atualmente não há carcereiro na prisão."
+		"sv"		"det fanns ingen fängelsedirektör att avskeda."
+	}
+}
