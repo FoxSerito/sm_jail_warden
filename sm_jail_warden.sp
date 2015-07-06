@@ -4,19 +4,18 @@
 #include <cstrike>
 #include <warden>
 #include <morecolors>
-#include <foxserito_jail_warden>
 #include <sdkhooks>
-#include <lastrequest>
+//#include <lastrequest>
+#include <basecomm>
 
 // --------------------
 //thanks for the basis code https://github.com/ecca
 //спасибо за базовый код https://github.com/ecca
 // --------------------
 
-#define PLUGIN_VERSION   "2.4"
+#define PLUGIN_VERSION   "2.5"
 
 new Warden = -1;
-new Handle:g_cVar_mnotes = INVALID_HANDLE;
 new Handle:g_fward_onBecome = INVALID_HANDLE;
 new Handle:g_fward_onRemove = INVALID_HANDLE;
 
@@ -36,6 +35,7 @@ new LR_cancel_count = 2; // сколько раз может отменять LR
 new hg_count = 25;
 
 new floodcontrol = 0;
+new mute_comandspam_control = 0;
 
 new FreeDayTrigger = 0;
 new FreeDayPlayer = -1;
@@ -43,13 +43,14 @@ new CT_Vote_cmd;
 new String:m_ModelName_before_ward[PLATFORM_MAX_PATH];
 new Handle:h_Menu, Handle:h_Timer;
 new kick_vots[MAXPLAYERS + 1], timer_sec, all_votes; 
-new SomeoneClientInLastRequestPeremen = 0;
 new HP_bw = -1;
+new g_offsCollisionGroup;
+new switch_noblock = 0;
 
 public Plugin:myinfo = {
 	name = "Jail Warden (by FoxSerito)",
 	author = "FoxSerito",
-	description = "Jail Warden",
+	description = "Warden menu for jail mod server",
 	version = PLUGIN_VERSION,
 	url = "vk.com/foxserito"
 };
@@ -72,9 +73,17 @@ public OnPluginStart()
 	HookEvent("round_start", round_start, EventHookMode_PostNoCopy); 
 
 	HookEvent("player_death", playerDeath);
-	AddCommandListener(HookPlayerChat, "say");
-	CreateConVar("sm_warden_version", PLUGIN_VERSION,  "The version of the SourceMod plugin JailBreak Warden, by ecca", FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_PLUGIN|FCVAR_NOTIFY|FCVAR_DONTRECORD);
-	g_cVar_mnotes = CreateConVar("sm_warden_better_notifications", "0", "0 - disabled, 1 - Will use hint and center text", FCVAR_PLUGIN, true, 0.0, true, 1.0);
+
+	RegConsoleCmd("say", say);
+	RegConsoleCmd("say_team", say);
+
+	g_offsCollisionGroup = FindSendPropOffs("CBaseEntity", "m_CollisionGroup");
+	if (g_offsCollisionGroup == -1)
+	{
+		SetFailState("[NoBlock] Failed to get offset for CBaseEntity::m_CollisionGroup.");
+	}
+
+	CreateConVar("sm_warden_version", PLUGIN_VERSION,  "The version of the SourceMod plugin Jail Warden, by FoxSerito", FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_PLUGIN|FCVAR_NOTIFY|FCVAR_DONTRECORD);
 	g_fward_onBecome = CreateGlobalForward("warden_OnWardenCreated", ET_Ignore, Param_Cell);
 	g_fward_onRemove = CreateGlobalForward("warden_OnWardenRemoved", ET_Ignore, Param_Cell);
 	WardenModel = CreateConVar("warden_model", WardenModelPath, "Модель командира");
@@ -123,8 +132,6 @@ public Action:openmenu(client, args)
 
 public Action:BecomeWarden(client, args) 
 {
-	SomeoneClientInLastRequestPeremen = 0;
-	SomeoneClientInLastRequest();
 	if (Warden == -1) // если нет кмд
 	{
 		
@@ -137,37 +144,26 @@ public Action:BecomeWarden(client, args)
 			}
 			else if(CT_Vote_cmd > 0) // если голосование еще идет
 			{
-				PrintToChat(client, "[КМД] Вы неможете сейчас стать командиром, идет голосование!");
+				CPrintToChat(client,"[КМД] ~ Вы неможете сейчас стать командиром, идет голосование!");
 			}
-			else if(SomeoneClientInLastRequestPeremen == 1) //если у когонибудь ЛР
-			{
-				PrintToChat(client, "[КМД] Вы неможете сейчас стать командиром, идет ЛР!");
-			}
+			//else if( ) //если у когонибудь ЛР
+			//{
+			//	CPrintToChat(client,"[КМД] ~ Вы неможете сейчас стать командиром, идет ЛР!");
+			//}
 			else // или другая причина
 			{
-				//PrintToChat(client, "[КМД] %t", "warden_playerdead");
-				PrintToChat(client, "[КМД] Вы неможете сейчас стать командиром!");
+				//CPrintToChat(client, "[КМД] %t", "warden_playerdead");
+				CPrintToChat(client,"[КМД] ~ Вы неможете сейчас стать командиром!");
 			}
 		}
 		else // только КТ могут стать командиром
 		{
-			PrintToChat(client, "[КМД] %t", "warden_ctsonly");
+			CPrintToChat(client,"[КМД] ~  %t", "warden_ctsonly");
 		}
 	}
 	else // командир уже назначен
 	{
-		PrintToChat(client, "[КМД] %t", "warden_exist", Warden);
-	}
-}
-
-SomeoneClientInLastRequest()
-{
-	for (new z = 1; z <= MaxClients; z++) 
-	{ 
-		if (IsClientInGame(z) && !IsFakeClient(z) && IsClientInLastRequest(z))
-		{
-			SomeoneClientInLastRequestPeremen = 1; //есть ктонибудь участвующий в ЛР
-		} 
+		CPrintToChat(client,"[КМД] ~  %t", "warden_exist", Warden);
 	}
 }
 
@@ -175,35 +171,33 @@ public Action:ExitWarden(client, args)
 {
 	if(client == Warden) // убеждаемся в игроке что он командир
 	{
-		PrintToChatAll("[КМД] %t", "warden_retire", client);
-		if(GetConVarBool(g_cVar_mnotes))
+		CPrintToChatAll("[КМД] %t", "warden_retire", client);
+		if (GetClientMenu(client))
 		{
-			PrintCenterTextAll("[КМД] %t", "warden_retire", client);
-			PrintHintTextToAll("[КМД] %t", "warden_retire", client);
+			CancelClientMenu(client);
 		}
-		CloseWardenMenu();
 		Warden = -1; // даем возможность другим стать командиром
 		//SetEntityRenderColor(client, 255, 255, 255, 255);
 	}
 	else 
 	{
-		PrintToChat(client, "[КМД] %t", "warden_notwarden");
+		CPrintToChat(client, "[КМД] %t", "warden_notwarden");
 	}
 }
 
 public round_start(Handle:event, const String:name[], bool:silent) 
 { 
-	
-
 	new T_players = GetTeamClientCount(CS_TEAM_T);
 	new CT_players = GetTeamClientCount(CS_TEAM_CT);
-
 
 	Warden = -1; // в начале раунда открываем вакансию командира
 	FreeDayTrigger = 0;
 	FreeDayPlayer = -1;
 	LR_cancel_count = 2;
 	hg_count = 25;
+
+	BlockClientAll();
+	switch_noblock = 0;
 
 	if (h_Timer != INVALID_HANDLE) 
 	{ 
@@ -212,7 +206,6 @@ public round_start(Handle:event, const String:name[], bool:silent)
 	}
 
 	ServerCommand("mp_friendlyfire 0");
-	ServerCommand("sv_noblock 0");
 
 	if (h_Menu != INVALID_HANDLE) CloseHandle(h_Menu); 
 	h_Menu = CreateMenu(Select_Func); 
@@ -253,7 +246,7 @@ public round_start(Handle:event, const String:name[], bool:silent)
 		// если террористов меньше 2, удаляем созданное меню и разрешаем писать команды !w/!c
 		CloseHandle(h_Menu); 
 		h_Menu = INVALID_HANDLE;
-		CPrintToChatAll("{greenyellow}Мало игроков для голосования, возьмите кмд командой !w или !c");  
+		CPrintToChatAll("Мало игроков для голосования, возьмите кмд командой !w или !c");  
 		CT_Vote_cmd = 0;
 	} 
 } 
@@ -272,10 +265,10 @@ public Select_Func(Handle:menu, MenuAction:action, client, item)
 	{ 
 		all_votes++; 
 		kick_vots[target]++; 
-		CPrintToChatAll("{greenyellow}| {lime}%N {greenyellow}выбрал игрока {lime}%N {greenyellow}|", client, target); 
+		CPrintToChatAll("| %N выбрал игрока %N |", client, target); 
 	} 
 	else 
-		PrintToChat(client, "Игрок не найден"); 
+		CPrintToChat(client,"[КМД] ~ Игрок не найден"); 
 } 
 
 public Action:Timer_Func(Handle:timer_f) 
@@ -293,8 +286,7 @@ public Action:Timer_Func(Handle:timer_f)
 		CloseHandle(h_Menu); 
 		h_Menu = INVALID_HANDLE; 
 	} 
-
-	PrintHintTextToAll("Проголосовало %d человек", all_votes); 
+ 
 	if (all_votes < 1)
 	{
 		new last_cmd[65];
@@ -316,12 +308,12 @@ public Action:Timer_Func(Handle:timer_f)
 		}
 		else if(ct_count == 0)
 		{
-			PrintToChatAll("[КМД] Голосование провалилось :( Нету живых КТ");
+			CPrintToChatAll("[КМД] Голосование провалилось :( Нету живых КТ");
 			CT_Vote_cmd = 0;
 			return Plugin_Stop;
 		}
 
-		PrintToChatAll("[КМД] Голосов нет, случайным командиром становится %N", random_cmd);
+		CPrintToChatAll("[КМД] Голосов нет, случайным командиром становится %N", random_cmd);
 		// 
 	}
 	else
@@ -341,13 +333,20 @@ public Action:Timer_Func(Handle:timer_f)
 	} 
 	if (target > 0 && IsClientInGame(target) && !IsFakeClient(target) && GetClientTeam(target) == CS_TEAM_CT && IsPlayerAlive(target)) //проверка проверка проверка :D
 	{ 
-		PrintHintTextToAll("Голосование завершено\n \n %d голосов за %s", all_votes,target); 
-		CPrintToChatAll("<<<< {unique}Игрок {haunted}%N {unique}выбран командиром >>>>", target);
+		for(new i = 1; i <= GetMaxClients(); i++)
+		{
+			if(IsClientInGame(i) && !IsFakeClient(i))
+			{
+				ClientCommand(i, "play ui/achievement_earned.wav");
+			}
+		}
+		CPrintToChatAll("╔═══\n║ Голосование на командира завершено!\n║ За игрока %N проголосовало %d чел.\n╚═══\n", target, all_votes);
+		
 		SetTheWarden(target);
 		ShowMyPanel(target);
 	} 
 	else 
-		PrintToChatAll("Игрок за КТ не найден, введите !w или !c чтобы стать командиром."); 
+		CPrintToChatAll("Игрок за КТ не найден, введите !w или !c чтобы стать командиром."); 
 
 	return Plugin_Stop; 
 }
@@ -358,14 +357,12 @@ public Action:playerDeath(Handle:event, const String:name[], bool:dontBroadcast)
 	
 	if(client == Warden)
 	{
-		PrintToChatAll("[КМД] %t", "warden_dead", client);
-		if(GetConVarBool(g_cVar_mnotes))
-		{
-			PrintCenterTextAll("[КМД] %t", "warden_dead", client);
-			PrintHintTextToAll("[КМД] %t", "warden_dead", client);
-		}
+		CPrintToChatAll("[КМД] %t", "warden_dead", client);
 		SetEntityRenderColor(client, 255, 255, 255, 255);
-		CloseWardenMenu();
+		if (GetClientMenu(client))
+		{
+			CancelClientMenu(client);
+		}
 		Warden = -1;
 	}
 }
@@ -375,13 +372,11 @@ public OnClientDisconnect(client)
 {
 	if(client == Warden)
 	{
-		PrintToChatAll("[КМД] %t", "warden_disconnected");
-		if(GetConVarBool(g_cVar_mnotes))
+		CPrintToChatAll("[КМД] %t", "warden_disconnected");
+		if (GetClientMenu(client))
 		{
-			PrintCenterTextAll("[КМД] %t", "warden_disconnected", client);
-			PrintHintTextToAll("[КМД] %t", "warden_disconnected", client);
+			CancelClientMenu(client);
 		}
-		CloseWardenMenu();
 		Warden = -1;
 	}
 }
@@ -394,67 +389,56 @@ public Action:RemoveWarden(client, args)
 	}
 	else
 	{
-		PrintToChatAll("[КМД] %t", "warden_noexist");
+		CPrintToChatAll("[КМД] %t", "warden_noexist");
 	}
 
 	return Plugin_Handled;
 }
 
-public Action:HookPlayerChat(client, const String:command[], args)
+public Action:say(client, args) 
 {
-	if(Warden == client && client != 0) 
+	if (Warden == client)
 	{
-		new String:szText[256];
-		GetCmdArg(1, szText, sizeof(szText));
-		
-		if(szText[0] == '/' || szText[0] == '@' || IsChatTrigger())
+		decl String:to_chat[255];
+		decl String:msg[255];
+		GetCmdArgString(msg, sizeof(msg));
+		StripQuotes(msg);
+		Format(to_chat, sizeof(to_chat), "%t","warden_chat", client, msg);
+		if(msg[0] == '/' || msg[0] == '@' || IsChatTrigger())
 		{
 			return Plugin_Handled;
 		}
-		
-		if(IsClientInGame(client) && IsPlayerAlive(client) && GetClientTeam(client) == CS_TEAM_CT)
-		{
-			PrintToChatAll("\x04[Командир] \x03%N: \x07FFFFFF%s", client, szText);
-			return Plugin_Handled;
-		}
+		else CPrintToChatAll(to_chat);
+		return Plugin_Handled;
 	}
-	
+
 	return Plugin_Continue;
 }
+
 
 public SetTheWarden(client)
 {
 	if(IsClientInGame(client) && !IsFakeClient(client) && GetClientTeam(client) == CS_TEAM_CT && IsPlayerAlive(client))
 	{
-		SetEntityModel(client, WardenModelPath);
-
-		PrintToChatAll("[КМД] %t", "warden_new", client);
-
-		if(GetConVarBool(g_cVar_mnotes))
-		{
-			PrintCenterTextAll("[КМД] %t", "warden_new", client);
-			PrintHintTextToAll("[КМД] %t", "warden_new", client);
-		}
-		Warden = client;
 		GetEntPropString(client, Prop_Data, "m_ModelName", m_ModelName_before_ward, sizeof(m_ModelName_before_ward));
+
+		CPrintToChatAll("[КМД] %t", "warden_new", client);
+		Warden = client;
+		
 		HP_bw = GetClientHealth(client); // запоминаем сколько было HP до того как стать командиром
 		if (GetClientHealth(client) > 90) //если жизней больше 90 
 		{
 			SetEntProp(client, Prop_Data, "m_iHealth", 130); //устанавливаем 130 HP
 		}
 		// SetClientListeningFlags(client, VOICE_NORMAL);
+		SetEntityModel(client, WardenModelPath);
 		Forward_OnWardenCreation(client);
 	}
 }
 
 public RemoveTheWarden(client)
 {
-	PrintToChatAll("[КМД] %t", "warden_removed", client, Warden);
-	if(GetConVarBool(g_cVar_mnotes))
-	{
-		PrintCenterTextAll("[КМД] %t", "warden_removed", client);
-		PrintHintTextToAll("[КМД] %t", "warden_removed", client);
-	}
+	CPrintToChatAll("[КМД] %t", "warden_removed", client, Warden);
 	SetEntityRenderColor(Warden, 255, 255, 255, 255);
 	SetEntityModel(client, m_ModelName_before_ward); //возвращаем модельку которая была раньше
 
@@ -470,7 +454,10 @@ public RemoveTheWarden(client)
 		}
 	}
 
-	CloseWardenMenu();
+	if (GetClientMenu(client))
+	{
+		CancelClientMenu(client);
+	}
 	Warden = -1;
 	
 	Forward_OnWardenRemoved(client);
@@ -522,7 +509,6 @@ public Native_RemoveWarden(Handle:plugin, numParams)
 		RemoveTheWarden(client);
 	}
 }
-
 public Forward_OnWardenCreation(client)
 {
 	Call_StartForward(g_fward_onBecome);
@@ -540,20 +526,20 @@ public Forward_OnWardenRemoved(client)
 ShowMyPanel(client) 
 { 
 	new Handle:maincmd = CreatePanel(); 
-	SetPanelTitle(maincmd, "[Меню командира]\n \n"); 
+	SetPanelTitle(maincmd, "Меню командира\n \n"); 
 	DrawPanelItem(maincmd, "[◄|►] Открыть все двери");
 	DrawPanelItem(maincmd, "Направляющий свет");
-	DrawPanelItem(maincmd, "Дополнительно");
 	DrawPanelItem(maincmd, "Снять ФД/станд. цвет");	
 	DrawPanelItem(maincmd, "Дать мирный фридей (1чел)");
 	DrawPanelItem(maincmd, "Драка заключенных Вкл./Выкл.");
-	DrawPanelItem(maincmd, "NoBlock Вкл./Выкл.");	
+	DrawPanelItem(maincmd, "NoBlock Вкл./Выкл.");
+	DrawPanelItem(maincmd, "Выкл микро заключенным на 15 сек");
+	DrawPanelItem(maincmd, "Еще >>");
 	DrawPanelText(maincmd, "\n \n");
 	DrawPanelItem(maincmd, "[-] Покинуть пост");
 	DrawPanelItem(maincmd, "[X] Выйти из меню");
 	SendPanelToClient(maincmd, client, Select_Panel, 0);
 	CloseHandle(maincmd);
-	ClientCommand(client, "playgamesound items/nvg_off.wav");
 }
 
 
@@ -570,13 +556,13 @@ public Select_Panel(Handle:maincmd, MenuAction:action, client, option)
 				{
 					if (floodcontrol == 1)
 					{
-						PrintToChat(client,"Не используйте меню так часто!");
+						CPrintToChat(client,"[КМД] ~ Не используйте меню так часто!");
 						ShowMyPanel(client);
 					}
 					else
 					{
 						floodcontrol = 1;
-						CPrintToChatAll("{springgreen}[КМД] ~ {white}Командир Открыл Джайлы и другие обьекты");
+						CPrintToChatAll("[КМД] ~ Командир Открыл Джайлы и другие обьекты");
 						OpenAllDoors();
 						ShowMyPanel(client);
 						CreateTimer(5.0, FLOOD_D_timer);
@@ -589,47 +575,43 @@ public Select_Panel(Handle:maincmd, MenuAction:action, client, option)
 				}
 				case 3:
 				{
-					MenuPlus(client);
-				}
-				case 4:
-				{
 					ColorChangeDef(client);
 					ShowMyPanel(client);
 				}
-				case 5:
+				case 4:
 				{
 					// фридей
 					FreeDay(client);
 					ShowMyPanel(client);
 				}
-				case 6:
+				case 5:
 				{
 					if (GetConVarInt(FindConVar("mp_friendlyfire")) == 1) 
 					{
 						floodcontrol = 1;
 						ServerCommand("mp_friendlyfire 0");
 						PrintHintTextToAll("[КМД] ~ Командир запретил заключенным драться!"); 
-						CPrintToChatAll("{springgreen}[КМД] ~ {white}Командир запретил заключенным драться!");
+						CPrintToChatAll("[КМД] ~ Командир запретил заключенным драться!");
 						CreateTimer(5.0, FLOOD_D_timer);
 						for(new i = 1; i <= GetMaxClients(); i++)
 						{
 							if(IsClientInGame(i) && !IsFakeClient(i))
 							{
-								ClientCommand(i, "play buttons/button11.wav");
+								ClientCommand(i, "play buttons/weapon_cant_buy.wav");
 							}
 						}
 
 					}
 					else if (floodcontrol == 1)
 					{
-						PrintToChat(client,"Не используйте меню так часто!");
+						CPrintToChat(client,"[КМД] ~ Не используйте меню так часто!");
 					}
 					else
 					{
 						floodcontrol = 1;
 						ServerCommand("mp_friendlyfire 1");
 						PrintHintTextToAll("[КМД] ~ Командир разрешил заключенным драться!");
-						CPrintToChatAll("{springgreen}[КМД] ~ {white}Командир разрешил заключенным драться!");
+						CPrintToChatAll("[КМД] ~ Командир разрешил заключенным драться!");
 						CreateTimer(5.0, FLOOD_D_timer);
 						for(new i = 1; i <= GetMaxClients(); i++)
 						{
@@ -637,37 +619,73 @@ public Select_Panel(Handle:maincmd, MenuAction:action, client, option)
 							{
 								ClientCommand(i, "play foxworldportal/jail/mkd_fight.mp3");
 							}
+						}
+					}
+					ShowMyPanel(client);
+				}
+				case 6:
+				{
+					if (switch_noblock == 1) 
+					{
+						floodcontrol = 1;
+						BlockClientAll();
+						switch_noblock = 0;
+						CPrintToChatAll("[КМД] ~ Командир выключил noblock!");
+						PrintHintTextToAll("[КМД] ~ noblock выключен -");
+						for(new i = 1; i <= GetMaxClients(); i++)
+						{
+							if(IsClientInGame(i) && !IsFakeClient(i))
+							{
+								ClientCommand(i, "play buttons/weapon_cant_buy.wav");
+							}
 						} 
+						CreateTimer(5.0, FLOOD_D_timer);
+					}
+					else if (floodcontrol == 1)
+					{
+						CPrintToChat(client,"[КМД] ~ Не используйте меню так часто!");
+					}
+					else
+					{
+						floodcontrol = 1;
+						UnblockClientAll();
+						switch_noblock = 1;
+						CPrintToChatAll("[КМД] ~ Командир включил noblock!");
+						PrintHintTextToAll("[КМД] ~ noblock включен +");
+						for(new i = 1; i <= GetMaxClients(); i++)
+						{
+							if(IsClientInGame(i) && !IsFakeClient(i))
+							{
+								ClientCommand(i, "play physics/metal/chain_impact_soft2.wav");
+							}
+						} 
+						CreateTimer(5.0, FLOOD_D_timer);
 					}
 					ShowMyPanel(client);
 				}
 				case 7:
 				{
-					if (GetConVarInt(FindConVar("sm_noblock")) == 1) 
+					if (mute_comandspam_control == 1)
 					{
-						floodcontrol = 1;
-						ServerCommand("sm_noblock 0");
-						CPrintToChatAll("{springgreen}[КМД] ~ {white}Командир выключил noblock!");
-						PrintHintTextToAll("[КМД] ~ noblock выключен -");
-						CreateTimer(5.0, FLOOD_D_timer);
-					}
-					else if (floodcontrol == 1)
-					{
-						PrintToChat(client,"Не используйте меню так часто!");
+						CPrintToChat(client,"[КМД] ~ Повторно выдать мут можно только через 30 сек!");
+						ShowMyPanel(client);
 					}
 					else
 					{
-						floodcontrol = 1;
-						ServerCommand("sm_noblock 1");
-						CPrintToChatAll("{springgreen}[КМД] ~ {white}Командир включил noblock!");
-						PrintHintTextToAll("[КМД] ~ noblock включен +");
-						CreateTimer(5.0, FLOOD_D_timer);
+						mute_comandspam_control = 1;
+						ShowMyPanel(client);
+						Mute_alive_T(); // устанавливаем все Т мут
+						CreateTimer(15.0, Timer_UnMute_alive_T, client, TIMER_FLAG_NO_MAPCHANGE); // через 15 секунда автоматически снимаем мут с Т
+						CreateTimer(30.0, mute_comandspam_timer);
 					}
-					ShowMyPanel(client);
 				}
 				case 8:
 				{
-					CPrintToChatAll("{springgreen}[КМД] ~ {white}Командир покинул пост, возьмите командование!");
+					MenuPlus(client);
+				}
+				case 9:
+				{
+					CPrintToChatAll("[КМД] ~ Командир покинул пост, возьмите командование!");
 					SetEntityModel(client, m_ModelName_before_ward); //возвращаем модельку которая была раньше
 					Warden = -1;
 				}
@@ -675,9 +693,37 @@ public Select_Panel(Handle:maincmd, MenuAction:action, client, option)
 		}
 		else // The warden already exist so there is no point setting a new one
 		{
-			PrintToChat(client, "Вы не КМД");
+			CPrintToChat(client, "[КМД] ~ Вы не КМД");
 		}
 	} 
+}
+
+Mute_alive_T()
+{
+	new MutedT_count;
+	MutedT_count = 0;
+	for(new i = 1; i <= MaxClients; i++)
+	{
+		if ( IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) == CS_TEAM_T && !IsFakeClient(i) && !BaseComm_IsClientMuted(i) && !(GetUserFlagBits(i) & ADMFLAG_GENERIC) )
+		{
+			BaseComm_SetClientMute(i, true);
+			MutedT_count++;
+		}
+	}
+	if (MutedT_count == 0) CPrintToChatAll("[КМД] ~ Заключенных нет, некому отключать микрофон.");
+	else CPrintToChatAll("[КМД] ~ Командир отключил заключенным микрофон на 15 сек (%i человек)",MutedT_count);
+}	
+
+public Action:Timer_UnMute_alive_T(Handle:fox_m_timer, any:client)
+{
+	for(new i = 1; i <= MaxClients; i++)
+	{
+		if (IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) == CS_TEAM_T && !IsFakeClient(i) && BaseComm_IsClientMuted(i) ) // if player is in game and alive
+		{
+			BaseComm_SetClientMute(i, false);
+		}
+	}
+	CPrintToChatAll("[КМД] ~ Время вышло, заключенные снова могут говорить!");
 }
 
 MenuPlus(client) 
@@ -685,13 +731,13 @@ MenuPlus(client)
 	new Handle:MenuPlus_handle = CreatePanel(); 
 	SetPanelTitle(MenuPlus_handle, "Дополнительное меню:");	// заголовок
 	DrawPanelText(MenuPlus_handle, "\n \n");
-	DrawPanelItem(MenuPlus_handle, " Покрасить в синий");	
-	DrawPanelItem(MenuPlus_handle, " Покрасить в зеленый");	
-	DrawPanelItem(MenuPlus_handle, " Отменить все ЛР (2 раза)");	
-	DrawPanelItem(MenuPlus_handle, " Взять гранату (25 раз)");		
-	DrawPanelItem(MenuPlus_handle, " Игра призрак (beta)");		
-	DrawPanelText(MenuPlus_handle, "\n \n");							
-	DrawPanelItem(MenuPlus_handle, "<- Назад");						
+	DrawPanelItem(MenuPlus_handle, "Покрасить в синий");
+	DrawPanelItem(MenuPlus_handle, "Покрасить в зеленый");
+	DrawPanelItem(MenuPlus_handle, "Отменить все ЛР (2 раза)");
+	DrawPanelItem(MenuPlus_handle, "Взять гранату (25 раз)");
+	DrawPanelItem(MenuPlus_handle, "Игра призрак (В разработке)");
+	DrawPanelText(MenuPlus_handle, "\n \n");
+	DrawPanelItem(MenuPlus_handle, "<< Назад");
 	SendPanelToClient(MenuPlus_handle, client, Select_Panel_plus, 0);
 	CloseHandle(MenuPlus_handle);
 	ClientCommand(client, "playgamesound items/nvg_off.wav");
@@ -718,11 +764,11 @@ public Select_Panel_plus(Handle:MenuPlus_handle, MenuAction:action, client, opti
 			{
 				if (floodcontrol == 1)
 				{
-					PrintToChat(client,"Не используйте меню так часто!");
+					CPrintToChat(client,"[КМД] ~ Не используйте меню так часто!");
 				}
 				else if (LR_cancel_count == 0)
 				{
-					PrintToChat(client,"Вы больше неможете отменять LR!");
+					CPrintToChat(client,"[КМД] ~ Вы больше неможете отменять LR!");
 				}
 				else
 				{
@@ -737,18 +783,19 @@ public Select_Panel_plus(Handle:MenuPlus_handle, MenuAction:action, client, opti
 			{
 				if (hg_count == 0)
 				{
-					PrintToChat(client,"Вы больше неможете выдавать гранаты!");
+					CPrintToChat(client,"[КМД] ~ У вас закончились гранаты!");
 				}
 				else
 				{
 					GivePlayerItem(client, "weapon_hegrenade");
 					--hg_count;
+					CPrintToChat(client,"[КМД] ~ У вас осталось %d гранат(а/ы)!",hg_count);
 				}
 				MenuPlus(client);
 			}
 			case 5:
 			{
-				PrintToChat(client,"В разработке!");
+				CPrintToChat(client,"[КМД] ~ В разработке!");
 				MenuPlus(client);
 			}
 			case 6:
@@ -763,13 +810,18 @@ public Select_Panel_plus(Handle:MenuPlus_handle, MenuAction:action, client, opti
 	}
 	else // The warden already exist so there is no point setting a new one
 	{
-		PrintToChat(client, "Вы не КМД");
+		CPrintToChat(client, "[КМД] ~ Вы не КМД");
 	}
 }
 
 public Action:FLOOD_D_timer(Handle:timer)
 {
 	floodcontrol = 0;
+}
+
+public Action:mute_comandspam_timer(Handle:timer)
+{
+	mute_comandspam_control = 0;
 }
 //-------------------------------------------------
 // Перекрас
@@ -780,12 +832,13 @@ ColorChangeBlue(client)
 	new targetaim = GetClientAimTarget(client, true);
 	if( targetaim == -1)
 	{
-		PrintToChat(client,"Наведите прицел на живого игрока!");
+		CPrintToChat(client,"[КМД] ~ Наведите прицел на живого игрока!");
 	}
 	else
 	{
 		SetEntityRenderColor(targetaim, 0, 0, 255, 255);
-		PrintToChat(client,"Вы перекрасили игрока %N в синий",targetaim);
+		CPrintToChat(client,"[КМД] ~ Вы перекрасили игрока %N в синий",targetaim);
+		CPrintToChat(targetaim,"[КМД] ~ Вас перекрасили в СИНИЙ!");
 		PrintHintText(targetaim,"[КМД] ~ Вас перекрасили в СИНИЙ!");
 	}	
 }
@@ -795,12 +848,13 @@ ColorChangeGreen(client)
 	new targetaim = GetClientAimTarget(client, true);
 	if( targetaim == -1)
 	{
-		PrintToChat(client,"Наведите прицел на живого игрока!");
+		CPrintToChat(client,"[КМД] ~ Наведите прицел на живого игрока!");
 	}
 	else
 	{
 		SetEntityRenderColor(targetaim, 0, 255, 0, 255);
-		PrintToChat(client,"Вы перекрасили игрока %N в зеленый",targetaim);	
+		CPrintToChat(client,"[КМД] ~ Вы перекрасили игрока %N в зеленый",targetaim);
+		CPrintToChat(targetaim,"[КМД] ~ Вас перекрасили в ЗЕЛЕНЫЙ!");
 		PrintHintText(targetaim,"[КМД] ~ Вас перекрасили в ЗЕЛЕНЫЙ!");
 	}
 }
@@ -810,20 +864,22 @@ ColorChangeDef(client)
 	new targetaim = GetClientAimTarget(client, true);
 	if( targetaim == -1)
 	{
-		PrintToChat(client,"Наведите прицел на живого игрока!");
+		CPrintToChat(client,"[КМД] ~ Наведите прицел на живого игрока!");
 	}
 	else if(targetaim == FreeDayPlayer) // снимем фридей
 	{
 		SetEntityRenderColor(targetaim, 255, 255, 255, 255);
 		FreeDayTrigger = 0;
 		FreeDayPlayer = -1;
-		CPrintToChatAll("{springgreen}[КМД] ~ {white} Командир снял мирный фридей с %N", targetaim);
+		CPrintToChatAll("[КМД] ~  Командир снял мирный фридей с %N", targetaim);
+		CPrintToChat(targetaim,"[КМД] ~ С вас снят мирный фридей!");
 		PrintHintText(targetaim,"[КМД] ~ С вас снят мирный фридей");
 	}
 	else
 	{
 		SetEntityRenderColor(targetaim, 255, 255, 255, 255);
 		PrintHintText(targetaim,"[КМД] ~ Ваш цвет был сброшен");
+		CPrintToChat(targetaim,"[КМД] ~ Ваш цвет был сброшен");
 	}
 }
 
@@ -836,7 +892,7 @@ FreeDay(client)
 	new targetaim = GetClientAimTarget(client, true);
 	if( targetaim == -1)
 	{
-		PrintToChat(client,"Наведите прицел на живого игрока!");
+		CPrintToChat(client,"[КМД] ~ Наведите прицел на живого игрока!");
 	}
 	else
 	{
@@ -844,7 +900,7 @@ FreeDay(client)
 		{
 			if(targetaim == FreeDayPlayer) //если цель уже с фридеем
 			{
-				PrintToChat(client,"[КМД] ~ У заключенного %s уже есть мирный фридей!", FreeDayPlayer);
+				CPrintToChat(client,"[КМД] ~ У заключенного %s уже есть мирный фридей!", FreeDayPlayer);
 			}
 			else //если же нет
 			{
@@ -853,7 +909,7 @@ FreeDay(client)
 					FreeDayPlayer = targetaim; //даем фридей
 					FreeDayTrigger = 1; 
 					SetEntityRenderColor(targetaim, 0, 0, 0, 255);
-					CPrintToChatAll("{springgreen}[КМД] ~ {white}Командир выдал  мирный фридей игроку %N", targetaim);
+					CPrintToChatAll("[КМД] ~ Командир выдал  мирный фридей игроку %N", targetaim);
 					decl String:buffer[150];
 					for(new i = 1; i <= GetMaxClients(); i++)
 					{
@@ -866,7 +922,7 @@ FreeDay(client)
 				}
 				else
 				{
-					PrintToChat(client,"[КМД] ~ Уже есть заключенный которому выдан мирный фридей!");
+					CPrintToChat(client,"[КМД] ~ Уже есть заключенный которому выдан мирный фридей!");
 				}
 			}
 		}
@@ -900,22 +956,57 @@ CreateGlowLight(client)
 
 GetLookPosition_f(client, Float:aim_Position[3]) 
 { 
-     decl Float:EyePosition[3], Float:EyeAngles[3], Handle:h_trace; 
-     GetClientEyePosition(client, EyePosition); 
-     GetClientEyeAngles(client, EyeAngles); 
-     h_trace = TR_TraceRayFilterEx(EyePosition, EyeAngles, MASK_SOLID, RayType_Infinite, GetLookPos_Filter_F, client); 
-     TR_GetEndPosition(aim_Position, h_trace); 
-     CloseHandle(h_trace); 
+	decl Float:EyePosition[3], Float:EyeAngles[3], Handle:h_trace; 
+	GetClientEyePosition(client, EyePosition); 
+	GetClientEyeAngles(client, EyeAngles); 
+	h_trace = TR_TraceRayFilterEx(EyePosition, EyeAngles, MASK_SOLID, RayType_Infinite, GetLookPos_Filter_F, client); 
+	TR_GetEndPosition(aim_Position, h_trace); 
+	CloseHandle(h_trace); 
 } 
 
 public bool:GetLookPos_Filter_F(ent, mask, any:client) 
 { 
-      return client != ent; 
+	return client != ent; 
 }
 //-------------------------------------------------
-// НАПРАВЛЯЮЩИЙ СВЕТ КОНЕЦ
+
+
+//-------------------------------------------------
+//    NoBlock
 //-------------------------------------------------
 
+BlockEntity(client)
+{
+	SetEntData(client, g_offsCollisionGroup, 5, 4, true);
+}
+
+UnblockEntity(client)
+{
+	SetEntData(client, g_offsCollisionGroup, 2, 4, true);
+}
+
+BlockClientAll()
+{
+	for (new i = 1; i <= MaxClients; i++)
+	{
+		if ( IsClientInGame(i) && IsPlayerAlive(i) )
+		{
+			BlockEntity(i);
+		}
+	}
+}
+
+UnblockClientAll()
+{
+	for (new i = 1; i <= MaxClients; i++)
+	{
+		if ( IsClientInGame(i) && IsPlayerAlive(i) )
+		{
+			UnblockEntity(i);
+		}
+	}
+}
+//-------------------------------------------------
 
 
 //-------------------------------------------------

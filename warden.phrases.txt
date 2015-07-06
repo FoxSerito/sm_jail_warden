@@ -89,4 +89,12 @@
 		"pt"		"Atualmente não há carcereiro na prisão."
 		"sv"		"det fanns ingen fängelsedirektör att avskeda."
 	}
+	"warden_chat"
+	{
+		"#format"	"{1:N},{2:s}"
+		"en"		"[Warden] {1}: {2}"
+		"ru"		"[Командир] {1}: {2}"
+		"pt"		"[Warden] {1}: {2}"
+		"sv"		"[Warden] {1}: {2}"
+	}
 }
