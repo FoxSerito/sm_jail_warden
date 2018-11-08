@@ -1,2 +1,2 @@
 # sm_jail_warden
-http://hlmod.ru/forum/showthread.php?p=180351
+https://hlmod.ru/threads/jail-warden-menju-komandira.27630/
